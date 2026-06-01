@@ -212,13 +212,28 @@ class PipelineRunner:
             "quiet": True,
             "no_warnings": True,
             "progress_hooks": self._ydl_hooks(),
-            
-            # ── CAMBIO CLAVE: AUTENTICACIÓN OAUTH PARA EVITAR BLOQUEOS ──
-            "username": "oauth2",
-            "password": "",
         }
 
-        self.emit("log", msg="→ [Seguridad] Iniciando descarga mediante protocolo seguro OAuth de YouTube...")
+        # ── CONFIGURACIÓN DE COOKIES PARA EVITAR EL BLOQUEO DE BOT ──
+        # Render suele montar los Secret Files en la raíz del proyecto o en /etc/secrets/
+        posibles_rutas_cookies = [
+            "cookies.txt", 
+            "/etc/secrets/cookies.txt",
+            os.path.join(SCRIPT_DIR, "cookies.txt")
+        ]
+        
+        cookie_detectada = None
+        for ruta in posibles_rutas_cookies:
+            if os.path.exists(ruta):
+                cookie_detectada = ruta
+                break
+                
+        if cookie_detectada:
+            self.emit("log", msg=f"→ [Seguridad] Usando archivo de cookies detectado en: {cookie_detectada}")
+            opts["cookiefile"] = cookie_detectada
+        else:
+            self.emit("log", msg="⚠️ Aviso: No se detectó ningún archivo 'cookies.txt'. Se intentará descargar sin cookies.")
+        # ───────────────────────────────────────────────────────────
 
         with yt_dlp.YoutubeDL(opts) as ydl:
             ydl.download([url])
