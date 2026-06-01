@@ -1,3 +1,5 @@
 .env
 .env.local
 .env.*.local
+client_secrets.json
+youtube_token.pickle
