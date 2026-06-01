@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pronectis · YouTube Automation</title>
+  <meta name="description" content="Panel de automatización de videos para el canal de YouTube de Pronectis. Descarga, edita, fusiona con intro/outro y sube automáticamente con IA.">
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232563eb'/><text y='.9em' font-size='70' x='12' fill='white' font-weight='bold'>P</text></svg>">
+</head>
+<body>
+
+<!-- ═══════════════════════════════ HEADER ══════════════════════════════════ -->
+<header class="header">
+  <a href="/" class="logo">
+    <div class="logo-icon">P</div>
+    <div>
+      <div class="logo-text">Pronectis</div>
+      <div class="logo-sub">YouTube Automation</div>
+    </div>
+  </a>
+
+  <nav class="header-nav" role="navigation" aria-label="Navegación principal">
+    <button class="nav-btn active" id="navPipeline" onclick="showPanel('pipeline')" aria-current="page">
+      <span class="nav-icon">▶</span>
+      <span class="nav-label">Pipeline</span>
+    </button>
+    <button class="nav-btn" id="navReview" onclick="showPanel('review')" id="navReview">
+      <span class="nav-icon">📋</span>
+      <span class="nav-label">Revisión</span>
+    </button>
+    <button class="nav-btn" id="navHistory" onclick="showPanel('history')">
+      <span class="nav-icon">📜</span>
+      <span class="nav-label">Historial</span>
+    </button>
+    <button class="nav-btn" id="navSettings" onclick="showPanel('settings')">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">Ajustes</span>
+    </button>
+  </nav>
+
+  <div class="header-status" id="headerStatus">
+    <div class="status-dot" id="statusDot"></div>
+    <span class="status-label" id="statusLabel">Conectando...</span>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════ MAIN ════════════════════════════════════ -->
+<main class="main" role="main">
+
+  <!-- ─────────────────────── PANEL: PIPELINE ──────────────────────────── -->
+  <section class="panel active" id="panelPipeline" aria-label="Panel principal de pipeline">
+
+    <div class="section-title">
+      ▶ Nuevo Pipeline
+      <span class="chip chip-blue" id="pipelineStatusBadge" style="display:none"></span>
+    </div>
+    <p class="section-subtitle">Descargá, editá y publicá un video de YouTube con IA y FFmpeg.</p>
+
+    <!-- Config form -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-icon">🔗</span>
+        <span class="card-title">Configuración del Video</span>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="inputUrl">URL de YouTube <span style="color:var(--red)">*</span></label>
+          <input
+            type="text"
+            id="inputUrl"
+            placeholder="https://www.youtube.com/watch?v=..."
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <span class="input-hint" id="urlHint"></span>
+        </div>
+
+        <div class="form-group">
+          <label for="inputOut">Nombre del archivo de salida</label>
+          <input
+            type="text"
+            id="inputOut"
+            placeholder="final_output.mp4"
+            value="final_output.mp4"
+          >
+          <span class="input-hint">Se guardará en la carpeta <code>outputs/</code></span>
+        </div>
+      </div>
+
+      <div class="form-grid form-grid-2 mt-12">
+        <div class="form-group">
+          <label for="inputTrimStart">✂️ Recortar inicio (segundos)</label>
+          <input type="number" id="inputTrimStart" value="0" min="0" step="0.1" placeholder="0">
+          <span class="input-hint">Segundos a eliminar del inicio del video descargado</span>
+        </div>
+        <div class="form-group">
+          <label for="inputTrimEnd">✂️ Recortar fin (segundos)</label>
+          <input type="number" id="inputTrimEnd" value="0" min="0" step="0.1" placeholder="0">
+          <span class="input-hint">Segundos a eliminar del final del video descargado</span>
+        </div>
+      </div>
+
+      <div class="mt-16">
+        <div class="toggle-wrap" onclick="toggleAutoUpload()" role="button" tabindex="0"
+             onkeydown="if(event.key==='Enter'||event.key===' ')toggleAutoUpload()">
+          <div class="toggle-label">
+            <strong>🚀 Subida automática a YouTube</strong>
+            <span id="autoUploadDesc">Desactivado — podrás revisar y editar antes de subir</span>
+          </div>
+          <label class="toggle" onclick="event.stopPropagation()">
+            <input type="checkbox" id="toggleAutoUpload" onchange="onAutoUploadChange()">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-full mt-16" id="btnRun" onclick="startPipeline()">
+        <span id="btnRunIcon">▶</span>
+        <span id="btnRunLabel">Iniciar Pipeline</span>
+      </button>
+    </div>
+
+    <!-- Step progress -->
+    <div class="card mt-12" id="progressCard" style="display:none">
+      <div class="card-header">
+        <span class="card-icon">⏱</span>
+        <span class="card-title">Progreso del Pipeline</span>
+        <span class="card-badge" id="progressStepName">Iniciando...</span>
+      </div>
+
+      <div class="steps-container" role="progressbar" aria-label="Pasos del pipeline">
+        <div class="step-item">
+          <div class="step-bubble">
+            <div class="step-circle" id="step1circle">1</div>
+            <div class="step-label" id="step1label">Descarga</div>
+          </div>
+          <div class="step-connector" id="conn1"></div>
+        </div>
+        <div class="step-item">
+          <div class="step-bubble">
+            <div class="step-circle" id="step2circle">2</div>
+            <div class="step-label" id="step2label">Gemini IA</div>
+          </div>
+          <div class="step-connector" id="conn2"></div>
+        </div>
+        <div class="step-item">
+          <div class="step-bubble">
+            <div class="step-circle" id="step3circle">3</div>
+            <div class="step-label" id="step3label">FFmpeg</div>
+          </div>
+          <div class="step-connector" id="conn3"></div>
+        </div>
+        <div class="step-item">
+          <div class="step-bubble">
+            <div class="step-circle" id="step4circle">4</div>
+            <div class="step-label" id="step4label">YouTube</div>
+          </div>
+          <div class="step-connector" id="conn4"></div>
+        </div>
+        <div class="step-item" style="flex:0">
+          <div class="step-bubble">
+            <div class="step-circle" id="step5circle">5</div>
+            <div class="step-label" id="step5label">Limpieza</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Download progress bar (shown during step 1) -->
+      <div class="progress-section mt-16" id="downloadProgressWrap" style="display:none">
+        <div class="progress-label">
+          <span id="downloadProgressLabel">Descargando...</span>
+          <span id="downloadProgressPct">0%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="downloadProgressFill" style="width:0%"></div>
+        </div>
+      </div>
+
+      <!-- FFmpeg progress bar (shown during steps 1b/3) -->
+      <div class="progress-section mt-12" id="ffmpegProgressWrap" style="display:none">
+        <div class="progress-label">
+          <span>Procesando FFmpeg...</span>
+          <span id="ffmpegProgressPct">0%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="ffmpegProgressFill" style="width:0%"></div>
+        </div>
+      </div>
+
+      <!-- YouTube upload progress (auto-upload mode) -->
+      <div class="progress-section mt-12" id="uploadProgressWrap" style="display:none">
+        <div class="progress-label">
+          <span>Subiendo a YouTube...</span>
+          <span id="uploadProgressPct">0%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="uploadProgressFill" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Console -->
+    <div class="card mt-12">
+      <div class="card-header">
+        <span class="card-icon">💻</span>
+        <span class="card-title">Consola de Logs</span>
+        <button class="console-clear ml-auto" onclick="clearConsole()">Limpiar</button>
+      </div>
+      <div class="console-wrap">
+        <div class="console-header">
+          <div class="console-dots">
+            <div class="console-dot"></div>
+            <div class="console-dot"></div>
+            <div class="console-dot"></div>
+          </div>
+          <span class="console-title">pronectis-pipeline ~ logs</span>
+        </div>
+        <div id="console" role="log" aria-live="polite" aria-label="Log de ejecución">
+          <div class="console-empty" id="consoleEmpty">
+            <div class="console-empty-icon">💤</div>
+            <div class="console-empty-text">En espera. Iniciá un pipeline para ver los logs.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ─────────────────────── PANEL: REVIEW ────────────────────────────── -->
+  <section class="panel" id="panelReview" aria-label="Panel de revisión y subida">
+
+    <div class="section-title">📋 Revisión y Publicación</div>
+    <p class="section-subtitle">Revisá el video, editá el título y descripción generados por IA, y publicá en YouTube.</p>
+
+    <!-- Empty state when no output available -->
+    <div class="card" id="reviewEmpty">
+      <div class="empty-state">
+        <div class="empty-icon">🎬</div>
+        <div class="empty-text">No hay ningún video procesado todavía. Iniciá un pipeline primero.</div>
+      </div>
+    </div>
+
+    <!-- Review content (shown after pipeline completes) -->
+    <div id="reviewContent" style="display:none">
+
+      <!-- Video player -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-icon">🎬</span>
+          <span class="card-title">Video Final</span>
+          <span class="chip chip-success ml-auto" id="videoChip" style="display:none">✓ Listo</span>
+        </div>
+        <div class="review-video-wrap" id="videoWrap">
+          <div class="video-placeholder" id="videoPlaceholder">
+            <div class="video-placeholder-icon">🎬</div>
+            <div>Sin video disponible</div>
+          </div>
+          <video id="videoPlayer" controls preload="metadata" style="display:none"></video>
+        </div>
+        <div class="flex gap-8 mt-12">
+          <a id="btnDownloadVideo" class="btn btn-ghost btn-sm" href="#" download style="display:none">
+            ⬇ Descargar Video
+          </a>
+          <a id="btnDownloadDesc" class="btn btn-ghost btn-sm" href="#" download style="display:none">
+            📄 Descargar Descripción
+          </a>
+          <a id="btnDownloadTitle" class="btn btn-ghost btn-sm" href="#" download style="display:none">
+            📝 Descargar Título
+          </a>
+        </div>
+      </div>
+
+      <!-- Editable AI content -->
+      <div class="card mt-16">
+        <div class="card-header">
+          <span class="card-icon">🤖</span>
+          <span class="card-title">Contenido Generado por Gemini IA</span>
+          <span class="chip chip-blue ml-auto">Editable</span>
+        </div>
+
+        <div class="form-group">
+          <label for="editTitle">Título del Video</label>
+          <input type="text" id="editTitle" placeholder="Título generado por Gemini...">
+          <span class="input-hint" id="titleCharCount">0 / 100 caracteres</span>
+        </div>
+
+        <div class="form-group mt-16">
+          <label for="editDescription">Descripción del Video</label>
+          <textarea id="editDescription" style="height:280px"
+                    placeholder="Descripción generada por Gemini..."></textarea>
+          <span class="input-hint" id="descCharCount">0 caracteres</span>
+        </div>
+      </div>
+
+      <!-- Upload actions -->
+      <div class="card mt-16">
+        <div class="card-header">
+          <span class="card-icon">📤</span>
+          <span class="card-title">Publicar en YouTube</span>
+        </div>
+
+        <div class="review-actions">
+          <div class="privacy-select-wrap">
+            <label for="privacySelect">Privacidad:</label>
+            <select id="privacySelect">
+              <option value="private" selected>🔒 Privado</option>
+              <option value="unlisted">🔗 No listado</option>
+              <option value="public">🌐 Público</option>
+            </select>
+          </div>
+
+          <button class="btn btn-success" id="btnUploadYT" onclick="uploadToYouTube()" style="margin-left:auto">
+            📤 Subir a YouTube
+          </button>
+        </div>
+
+        <!-- Upload progress -->
+        <div class="upload-progress-wrap mt-12" id="manualUploadProgress">
+          <div class="progress-label">
+            <span>Subiendo a YouTube...</span>
+            <span id="manualUploadPct">0%</span>
+          </div>
+          <div class="progress-track mt-8">
+            <div class="progress-fill" id="manualUploadFill" style="width:0%"></div>
+          </div>
+        </div>
+
+        <!-- Success banner -->
+        <div class="yt-success hidden" id="ytSuccessBanner">
+          <div class="yt-success-icon">✅</div>
+          <div class="yt-success-text">
+            <strong>¡Video publicado exitosamente en YouTube!</strong>
+            <a id="ytSuccessLink" href="#" target="_blank" rel="noopener">Ver en YouTube →</a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ─────────────────────── PANEL: HISTORY ───────────────────────────── -->
+  <section class="panel" id="panelHistory" aria-label="Panel de historial">
+
+    <div class="section-title">📜 Historial de Ejecuciones</div>
+    <p class="section-subtitle">Registro de auditoría de todos los pipelines ejecutados.</p>
+
+    <!-- Outputs file list -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-icon">📁</span>
+        <span class="card-title">Archivos Generados</span>
+        <button class="btn btn-ghost btn-sm ml-auto" onclick="refreshOutputs()">↻ Actualizar</button>
+      </div>
+      <div id="outputsList" class="outputs-list">
+        <div class="empty-state">
+          <div class="empty-icon">📂</div>
+          <div class="empty-text">Sin archivos generados todavía.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Execution log -->
+    <div class="card mt-16">
+      <div class="card-header">
+        <span class="card-icon">📋</span>
+        <span class="card-title">Log de Auditoría</span>
+        <div class="flex gap-8 ml-auto">
+          <button class="btn btn-ghost btn-sm" onclick="refreshLog()">↻ Actualizar</button>
+        </div>
+      </div>
+      <pre id="logContent">Cargando historial...</pre>
+    </div>
+
+  </section>
+
+  <!-- ─────────────────────── PANEL: SETTINGS ──────────────────────────── -->
+  <section class="panel" id="panelSettings" aria-label="Panel de ajustes">
+
+    <div class="section-title">⚙️ Ajustes del Sistema</div>
+    <p class="section-subtitle">Editá los archivos de configuración que usa Gemini IA para generar el contenido.</p>
+
+    <div class="card">
+
+      <!-- Landing pages -->
+      <div class="settings-section">
+        <div class="settings-label">
+          🌐 Landing Pages
+          <span class="tag">landing_pages.txt</span>
+        </div>
+        <textarea id="settingLandingPages" placeholder="Cargando..."></textarea>
+        <div class="settings-save-row">
+          <button class="btn btn-primary btn-sm" onclick="saveSettings('landing_pages', 'settingLandingPages')">
+            💾 Guardar
+          </button>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Descripcion ejemplo -->
+      <div class="settings-section">
+        <div class="settings-label">
+          📝 Estructura de Descripción (Ejemplo)
+          <span class="tag">descripcion_ejemplo.txt</span>
+        </div>
+        <textarea id="settingDescripcion" style="height:240px" placeholder="Cargando..."></textarea>
+        <div class="settings-save-row">
+          <button class="btn btn-primary btn-sm" onclick="saveSettings('descripcion_ejemplo', 'settingDescripcion')">
+            💾 Guardar
+          </button>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Titulos ejemplo -->
+      <div class="settings-section">
+        <div class="settings-label">
+          🏷️ Títulos de Referencia
+          <span class="tag">titulos_ejemplo.txt</span>
+        </div>
+        <textarea id="settingTitulos" style="height:160px" placeholder="Cargando..."></textarea>
+        <div class="settings-save-row">
+          <button class="btn btn-primary btn-sm" onclick="saveSettings('titulos_ejemplo', 'settingTitulos')">
+            💾 Guardar
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<!-- ═══════════════════════════ ERROR MODAL ══════════════════════════════════ -->
+<div class="modal-overlay" id="errorModal" role="dialog"
+     aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-icon-wrap">⚠️</div>
+      <div>
+        <div class="modal-title" id="modalTitle">Error en el Pipeline</div>
+        <div class="modal-subtitle">Ocurrió un problema. Podés continuar o cancelar el proceso.</div>
+      </div>
+    </div>
+    <div class="modal-step" id="modalStep">PASO DESCONOCIDO</div>
+    <div class="modal-detail" id="modalDetail">Sin detalles disponibles.</div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" id="btnModalCancel" onclick="respondPrompt('cancel')">
+        ✕ Cancelar Pipeline
+      </button>
+      <button class="btn btn-primary" id="btnModalContinue" onclick="respondPrompt('continue')">
+        → Continuar de todas formas
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ TOAST CONTAINER ══════════════════════════════ -->
+<div id="toastContainer" role="status" aria-live="polite"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
