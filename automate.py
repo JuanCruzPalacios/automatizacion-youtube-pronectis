@@ -267,7 +267,7 @@ def generate_marketing_assets(video_context):
     EJEMPLOS TÍTULOS: {titulos_referencia}
     ESTRUCTURA EJEMPLO: {ejemplo}
 
-    Devuelve OBLIGATORIAMENTE un JSON con las llaves "descripcion" y "titulo", sin textos adicionales:
+    Devuelve OBLIGATORIAMENTE un JSON con las llaves "descripcion" y "titulo" (MAX 100 CARACTERES PARA EL TITULO), sin textos adicionales:
     {{
         "descripcion": "Texto final...",
         "titulo": "Título final..."
