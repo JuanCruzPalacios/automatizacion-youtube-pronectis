@@ -5,6 +5,7 @@ import subprocess
 import json
 import argparse
 import re
+import datetime
 import yt_dlp
 from google import genai
 from dotenv import load_dotenv
@@ -21,6 +22,54 @@ except Exception as e:
 
 # Inicializar FFmpeg en el entorno usando la función correcta
 ffmpeg_path, ffprobe_path = run.get_or_fetch_platform_executables_else_raise()
+
+# Variables globales para control de fallos y limpieza dinámica
+TRACKED_OUTPUTS = []
+TEMP_FILES = []
+ERROR_LOG = []
+SUCCESS_LOG = []
+
+def log_error(step_name, detail):
+    """Registra un error interno para el informe final."""
+    ERROR_LOG.append(f"[-] ERROR EN PASO [{step_name}]: {detail}")
+
+def ask_to_continue(step_name, error_detail):
+    """
+    Pausa el flujo, muestra la falla y pregunta al usuario si desea continuar.
+    Si elige 'no', limpia absolutamente todo (incluidos temporales) y aborta.
+    """
+    log_error(step_name, error_detail)
+    print(f"\n⚠️  ¡ATENCIÓN! Ocurrió un error en el paso: {step_name}")
+    print(f"Detalle del error: {error_detail}")
+    
+    while True:
+        choice = input("¿Deseas continuar con el resto de los pasos? (s/n): ").strip().lower()
+        if choice in ['s', 'si', 'yes']:
+            print("-> Continuando con el pipeline a pesar de la falla...\n")
+            return True
+        if choice in ['n', 'no']:
+            print("\n❌ Cancelando pipeline. Iniciando rollback total de archivos generados y temporales...")
+            
+            # Limpiar salidas principales rastreadas
+            for path in TRACKED_OUTPUTS:
+                if os.path.exists(path):
+                    try:
+                        os.remove(path)
+                        print(f"   [Eliminado] {path}")
+                    except OSError:
+                        pass
+            
+            # Limpiar archivos temporales estrictamente bajo cancelación
+            for temp_path in TEMP_FILES:
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                        print(f"   [Temporal Eliminado] {temp_path}")
+                    except OSError:
+                        pass
+                        
+            print("Abandono completado de forma limpia. Saliendo.")
+            sys.exit(1)
 
 def refresh_windows_path():
     """
@@ -57,16 +106,15 @@ def get_video_info(file_path):
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         info = json.loads(result.stdout)
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
         print(f"Error al analizar el video '{file_path}' con ffprobe.", file=sys.stderr)
-        sys.exit(1)
+        raise e
         
     video_stream = next((s for s in info.get('streams', []) if s.get('codec_type') == 'video'), None)
     audio_stream = next((s for s in info.get('streams', []) if s.get('codec_type') == 'audio'), None)
     
     if not video_stream:
-        print(f"Error: El archivo '{file_path}' no contiene pistas de video válidas.", file=sys.stderr)
-        sys.exit(1)
+        raise ValueError(f"El archivo '{file_path}' no contiene pistas de video válidas.")
         
     width = int(video_stream.get('width', 1920))
     height = int(video_stream.get('height', 1080))
@@ -109,12 +157,8 @@ def download_youtube_video(url, temp_output_path):
         'quiet': False,
         'no_warnings': True,
     }
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-    except Exception as e:
-        print(f"Error al descargar desde YouTube: {e}", file=sys.stderr)
-        sys.exit(1)
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
     
     if not os.path.exists(temp_output_path):
         base, _ = os.path.splitext(temp_output_path)
@@ -124,8 +168,7 @@ def download_youtube_video(url, temp_output_path):
                 break
                 
     if not os.path.exists(temp_output_path):
-        print("Error: No se pudo localizar el video descargado.", file=sys.stderr)
-        sys.exit(1)
+        raise FileNotFoundError("No se pudo localizar el video descargado en el disco.")
         
     print(f"-> Descarga completada con éxito. Archivo temporal: {temp_output_path}")
     return temp_output_path
@@ -144,8 +187,7 @@ def trim_video(input_path, output_path, start_seconds=0.0, end_seconds=0.0):
     trim_duration = total_duration - start_seconds - end_seconds
 
     if trim_duration <= 0:
-        print(f"Error: El tiempo a recortar ({start_seconds}s inicio, {end_seconds}s fin) excede la duración total del video ({total_duration}s).", file=sys.stderr)
-        sys.exit(1)
+        raise ValueError(f"El tiempo a recortar ({start_seconds}s inicio, {end_seconds}s fin) excede la duración total ({total_duration}s).")
 
     print(f"\n[Recorte] Aplicando recorte al video descargado:")
     if start_seconds > 0:
@@ -163,13 +205,9 @@ def trim_video(input_path, output_path, start_seconds=0.0, end_seconds=0.0):
         output_path
     ]
 
-    try:
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print(f"-> Recorte finalizado con éxito. Nuevo archivo intermedio: {output_path}")
-        return output_path
-    except subprocess.CalledProcessError:
-        print("Error al intentar recortar el video con FFmpeg.", file=sys.stderr)
-        sys.exit(1)
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(f"-> Recorte finalizado con éxito. Nuevo archivo intermedio: {output_path}")
+    return output_path
 
 def clean_vtt_subtitles(vtt_content):
     """
@@ -179,20 +217,15 @@ def clean_vtt_subtitles(vtt_content):
     lines = vtt_content.splitlines()
     cleaned_lines = []
     
-    # Expresión regular para quitar timestamps tipo 00:01:20.000 --> 00:01:23.000
     timestamp_regex = re.compile(r'(\d{2}:)?\d{2}:\d{2}\.\d{3}')
-    # Expresión para remover tags HTML/XML como <c> o </c> que mete YouTube
     html_regex = re.compile(r'<[^>]*>')
 
     for line in lines:
         line = line.strip()
-        # Ignorar cabeceras VTT y líneas de tiempo
         if not line or line.startswith('WEBVTT') or line.startswith('Kind:') or line.startswith('Language:') or timestamp_regex.search(line):
             continue
         
-        # Limpiar tags internos
         line_clean = html_regex.sub('', line).strip()
-        
         if line_clean and line_clean not in cleaned_lines:
             cleaned_lines.append(line_clean)
             
@@ -201,28 +234,25 @@ def clean_vtt_subtitles(vtt_content):
 def get_video_context(url):
     """
     Usa yt-dlp para extraer tanto los metadatos como la transcripción real del video,
-    evitando APIs obsoletas.
+    evitando APIs obsoletas. Elude bloqueos 429 limitando idiomas explícitos de forma pública.
     """
     print(f"\n[2/5] Extrayendo contexto y transcripción real con yt-dlp...")
     
-    # 1. Obtener Metadatos Base
-    meta_opts = {'quiet': True, 'no_warnings': True}
+    meta_opts = {
+        'quiet': True, 
+        'no_warnings': True,
+    }
     with yt_dlp.YoutubeDL(meta_opts) as ydl:
-        try:
-            info = ydl.extract_info(url, download=False)
-            title = info.get('title')
-            original_desc = info.get('description', '')
-        except Exception as e:
-            print(f"Error al extraer metadatos iniciales: {e}", file=sys.stderr)
-            return None
+        info = ydl.extract_info(url, download=False)
+        title = info.get('title')
+        original_desc = info.get('description', '')
 
-    # 2. Descargar la transcripción real usando yt-dlp (Soporta manuales y auto-generados)
     temp_sub_prefix = "temp_transcript_extraction"
     sub_opts = {
-        'writesubtitles': True,         # Descargar subtítulos reales creados por humanos
-        'writeautomaticsub': True,      # Fallback a la transcripción automática real si no hay manuales
-        'subtitleslangs': ['es.*', 'en.*'], # Priorizar español (cualquier variante regional) o inglés
-        'skip_download': True,          # No queremos bajar el video de nuevo acá, solo el texto
+        'writesubtitles': True,
+        'writeautomaticsub': True,
+        'subtitleslangs': ['es-419', 'es', 'es-AR', 'en'], 
+        'skip_download': True,
         'outtmpl': temp_sub_prefix,
         'quiet': True,
         'no_warnings': True,
@@ -235,7 +265,6 @@ def get_video_context(url):
         except Exception:
             pass
 
-    # Buscar el archivo de subtítulos generado en el directorio actual (.vtt)
     vtt_file = None
     for f in os.listdir('.'):
         if f.startswith(temp_sub_prefix) and f.endswith('.vtt'):
@@ -251,44 +280,44 @@ def get_video_context(url):
         except Exception as e:
             print(f"-> Aviso: Error leyendo el archivo de transcripción: {e}")
         finally:
-            # Limpiar archivo de subtítulos temporal inmediatamente
             try:
                 os.remove(vtt_file)
             except OSError:
                 pass
     
     if transcript_text:
-        return f"Título: {title}\n\nTranscripción real del video:\n{transcript_text}"
+        return f"Título Original: {title}\n\nTranscripción real del video:\n{transcript_text}"
     else:
         print("-> Aviso: No se pudo localizar una pista de transcripción en el reproductor. Usando título y descripción.")
-        return f"Título: {title}\n\nDescripción Original:\n{original_desc}"
+        return f"Título Original: {title}\n\nDescripción Original:\n{original_desc}"
 
-def generate_description_with_gemini(video_context):
+def generate_marketing_assets(video_context):
     """
-    Llama a Gemini usando el SDK moderno (google-genai) para redactar la descripción.
+    Llama a Gemini usando el SDK moderno para redactar la descripción definitiva y
+    proponer un único título optimizado para el video en formato estructurado (JSON).
     """
-    print(f"-> Conectando con Gemini para estructurar la nueva descripción...")
+    print(f"-> Conectando con Gemini para estructurar la descripción y el título...")
     
     if "GEMINI_API_KEY" not in os.environ:
-        print("Error crítico: No se encontró la variable GEMINI_API_KEY en el archivo .env", file=sys.stderr)
-        return None
+        raise ValueError("No se encontró la variable GEMINI_API_KEY en el archivo .env")
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    landing_path = os.path.join(script_dir, "landing_pages.txt.txt")
+    landing_path = os.path.join(script_dir, "landing_pages.txt")
     ejemplo_path = os.path.join(script_dir, "descripcion_ejemplo.txt")
+    titulos_path = os.path.join(script_dir, "titulos_ejemplo.txt")
     
-    try:
-        with open(landing_path, 'r', encoding='utf-8') as f:
-            landings = f.read()
-        with open(ejemplo_path, 'r', encoding='utf-8') as f:
-            ejemplo = f.read()
-    except FileNotFoundError as e:
-        print(f"Error crítico: Faltan archivos de referencia necesarios para la IA: {e}", file=sys.stderr)
-        return None
+    with open(landing_path, 'r', encoding='utf-8') as f:
+        landings = f.read()
+    with open(ejemplo_path, 'r', encoding='utf-8') as f:
+        ejemplo = f.read()
+    with open(titulos_path, 'r', encoding='utf-8') as f:
+        titulos_referencia = f.read()
     
     prompt = f"""
     Eres un experto en SEO para YouTube y redactor de contenidos corporativos de la empresa Pronectis.
-    Tu tarea consiste en redactar la descripción definitiva para un nuevo video basándote en su contexto actual (título, transcripción o resumen).
+    Tu tarea consiste en generar dos recursos clave para un nuevo video basándote en su contexto actual (título original, transcripción o resumen):
+    1. Una descripción definitiva unificada bajo las reglas corporativas.
+    2. Un (1) único título definitivo optimizado, ganchero y con excelente SEO que siga fielmente el estilo de la empresa.
 
     CONTEXTO DEL VIDEO A PROCESAR:
     {video_context}
@@ -296,26 +325,34 @@ def generate_description_with_gemini(video_context):
     LISTA DE LANDINGS DISPONIBLES:
     {landings}
 
-    REGLAS ESTRICTAS DE REDACCIÓN:
-    1. Analiza con precisión el tema del video actual y elige obligatoriamente una URL de la 'LISTA DE LANDINGS DISPONIBLES' que tenga directa relación con lo tratado (ej: si habla de correos o firmas usa 'gsignature', si habla de seguridad usa 'fortinet' o 'eset', si habla de IA usa 'gemini-ia', etc.).
-    2. Debes reescribir por completo ÚNICAMENTE la primera sección de la descripción (los primeros 2 o 3 párrafos del texto). Esta debe resumir de forma ganchera el video analizado e incluir con naturalidad el enlace seleccionado bajo el formato de llamada a la acción (ej: "Para acceder a más información acerca de..., visitá nuestra página: [enlace]").
-    3. Toda la segunda sección del bloque (empezando exactamente desde "Si querés que ayudemos a tu organización con nuestros especialistas contactanos desde este link:") debe mantenerse TEXTUAL E IDÉNTICA al archivo de ejemplo provisto. No modifiques redes, textos informativos ni enlaces fijos del bloque institucional.
+    EJEMPLOS DE TÍTULOS DE REFERENCIA DEL CANAL:
+    {titulos_referencia}
 
-    ESTRUCTURA DE REFERENCIA A SEGUIR:
+    ESTRUCTURA DE REFERENCIA PARA LA DESCRIPCIÓN:
     {ejemplo}
 
-    Genera el bloque de texto final unificado directamente. No agregues saludos, explicaciones ni formatos de bloque de código adicionales.
+    REGLAS ESTRICTAS DE REDACCIÓN (DESCRIPCIÓN):
+    1. Analiza con precisión el tema del video actual y elige obligatoriamente una URL de la 'LISTA DE LANDINGS DISPONIBLES' que tenga directa relación con lo tratado.
+    2. Debes reescribir por completo ÚNICAMENTE la primera sección de la descripción (los primeros 2 o 3 párrafos del texto). Esta debe resumir de forma ganchera el video e incluir con naturalidad el enlace seleccionado bajo el formato de llamada a la acción (ej: "Para acceder a más información acerca de..., visitá nuestra página: [enlace]").
+    3. Toda la segunda sección del bloque (empezando exactamente desde "Si querés que ayudemos a tu organización con nuestros especialistas contactanos desde este link:") debe mantenerse TEXTUAL E IDÉNTICA al archivo de ejemplo provisto.
+
+    REGLAS ESTRICTAS (TÍTULO):
+    1. Genera exactamente UN (1) único título definitivo. No devuelvas listas ni alternativas adicionales.
+    2. Debe ser profesional, directo, con alto gancho para clics y asimilarse conceptualmente a los 'EJEMPLOS DE TÍTULOS DE REFERENCIA DEL CANAL'.
+
+    Debes responder OBLIGATORIAMENTE con un objeto JSON estructurado que contenga exactamente estas dos llaves, sin bloques de código adicionales ni textos introductorios:
+    {{
+        "descripcion": "El texto completo y final unificado de la descripción listo para usar de acuerdo a las reglas.",
+        "titulo": "El único título definitivo y optimizado generado para el video."
+    }}
     """
 
-    try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-        )
-        return response.text
-    except Exception as e:
-        print(f"Error al generar la descripción con Gemini: {e}", file=sys.stderr)
-        return None
+    response = client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=prompt,
+        config={"response_mime_type": "application/json"}
+    )
+    return json.loads(response.text)
 
 def concatenate_videos(clips_paths, output_path):
     """
@@ -383,18 +420,14 @@ def concatenate_videos(clips_paths, output_path):
         output_path
     ])
     
-    try:
-        subprocess.run(ffmpeg_cmd, check=True)
-        print(f"-> Fusión multimedia completada con éxito: {output_path}")
-    except subprocess.CalledProcessError:
-        print("Error durante la concatenación con FFmpeg.", file=sys.stderr)
-        sys.exit(1)
+    subprocess.run(ffmpeg_cmd, check=True)
+    print(f"-> Fusión multimedia completada con éxito: {output_path}")
 
 def main():
     refresh_windows_path()
     
     parser = argparse.ArgumentParser(
-        description="Automatización Pronectis: Video + IA Descripción + Recorte Opcional.",
+        description="Automatización Pronectis: Video + IA Descripción & Título + Recorte Opcional.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument('-u', '--url', required=True, help="URL del video de YouTube a procesar.")
@@ -419,37 +452,118 @@ def main():
     temp_yt_video = "temp_downloaded_yt_video.mp4"
     temp_trimmed_video = "temp_trimmed_yt_video.mp4"
     
-    # 1. Descargar video
-    downloaded_path = download_youtube_video(args.url, temp_yt_video)
+    # Asignar a la lista global de temporales para garantizar limpieza en cancelaciones
+    TEMP_FILES.extend([temp_yt_video, temp_trimmed_video])
     
-    # Aplicar recorte si aplica
+    # Añadir salidas principales al tracker para el rollback preventivo
+    TRACKED_OUTPUTS.append(args.out)
+    base_output_name = os.path.splitext(args.out)[0]
+    output_desc_txt = base_output_name + "_descripcion.txt"
+    output_title_txt = base_output_name + "_titulo.txt"
+    TRACKED_OUTPUTS.extend([output_desc_txt, output_title_txt])
+
+    # 1. Descargar video original de YouTube
+    try:
+        downloaded_path = download_youtube_video(args.url, temp_yt_video)
+        SUCCESS_LOG.append(f"[✓] Descarga completada: {temp_yt_video}")
+    except Exception as e:
+        ask_to_continue("Descarga de Video de YouTube", str(e))
+        downloaded_path = None
+
+    # Aplicar el recorte de video solo si el paso anterior se completó con éxito
     video_a_fusionar = downloaded_path
-    if args.trim_start > 0.0 or args.trim_end > 0.0:
-        video_a_fusionar = trim_video(downloaded_path, temp_trimmed_video, args.trim_start, args.trim_end)
-    
-    # 2. IA: Procesar descripción con la extracción nativa de yt-dlp
-    contexto = get_video_context(args.url)
-    if contexto:
-        descripcion_final = generate_description_with_gemini(contexto)
-        if descripcion_final:
-            output_txt = os.path.splitext(args.out)[0] + "_descripcion.txt"
-            with open(output_txt, "w", encoding="utf-8") as f:
-                f.write(descripcion_final)
-            print(f"-> ¡Descripción generada con éxito por la IA! Guardada en: {output_txt}")
-    
-    # 3. Combinar videos
-    clips_to_merge = [intro_path, video_a_fusionar, outro_path]
-    concatenate_videos(clips_to_merge, args.out)
-    
-    # 5. Limpieza
+    if downloaded_path and (args.trim_start > 0.0 or args.trim_end > 0.0):
+        try:
+            video_a_fusionar = trim_video(downloaded_path, temp_trimmed_video, args.trim_start, args.trim_end)
+            SUCCESS_LOG.append(f"[✓] Recorte aplicado exitosamente: {temp_trimmed_video}")
+        except Exception as e:
+            ask_to_continue("Recorte de Video (FFmpeg)", str(e))
+            video_a_fusionar = None
+
+    # 2. Extracción de contexto y consulta a Gemini IA
+    try:
+        contexto = get_video_context(args.url)
+        if contexto:
+            ia_assets = generate_marketing_assets(contexto)
+            if ia_assets:
+                # Guardar la descripción final generada
+                if "descripcion" in ia_assets and ia_assets["descripcion"]:
+                    with open(output_desc_txt, "w", encoding="utf-8") as f:
+                        f.write(ia_assets["descripcion"])
+                    print(f"-> ¡Descripción generada con éxito por la IA! Guardada en: {output_desc_txt}")
+                    SUCCESS_LOG.append(f"[✓] Contenido IA - Descripción creada con éxito en: {output_desc_txt}")
+                else:
+                    log_error("Escritura de Descripción IA", f"La llave 'descripcion' no trajo texto. No se creó el archivo: {output_desc_txt}")
+                    
+                # Guardar el título único sugerido
+                if "titulo" in ia_assets and ia_assets["titulo"]:
+                    with open(output_title_txt, "w", encoding="utf-8") as f:
+                        f.write(ia_assets["titulo"].strip())
+                    print(f"-> ¡Título SEO definitivo sugerido con éxito por la IA! Guardado en: {output_title_txt}")
+                    SUCCESS_LOG.append(f"[✓] Contenido IA - Título creado con éxito en: {output_title_txt}")
+                else:
+                    log_error("Escritura de Título IA", f"La llave 'titulo' no trajo texto. No se creó el archivo: {output_title_txt}")
+            else:
+                raise ValueError("La respuesta recibida de Gemini vino vacía o mal estructurada.")
+        else:
+            raise ValueError("No se pudo extraer el metadato contextual base del video original.")
+    except Exception as e:
+        log_error("Generación de Contenido IA", f"Fallo general del bloque de IA. No se crearon los archivos: {output_desc_txt} ni {output_title_txt}")
+        ask_to_continue("Generación de Activos de Marketing (Gemini IA)", str(e))
+
+    # 3. Combinar e integrar videos en un solo entregable
+    if video_a_fusionar:
+        try:
+            clips_to_merge = [intro_path, video_a_fusionar, outro_path]
+            concatenate_videos(clips_to_merge, args.out)
+            SUCCESS_LOG.append(f"[✓] Fusión de video final exitosa: {args.out}")
+        except Exception as e:
+            ask_to_continue("Fusión y Renderizado del Video Final (FFmpeg)", str(e))
+    else:
+        log_error("Fusión de Video Final", f"Se omitió la mezcla multimedia. El archivo final de video '{args.out}' NO fue creado.")
+        print("⚠️  Aviso: Se omitió la combinación de video final debido a que no hay archivo base disponible.")
+
+    # 5. Limpieza de elementos temporales en ejecución exitosa/normal
     print("\n[5/5] Limpiando residuos temporales...")
-    for temp_file in [temp_yt_video, temp_trimmed_video]:
+    for temp_file in TEMP_FILES:
         if os.path.exists(temp_file):
             try:
                 os.remove(temp_file)
             except OSError:
                 pass
-    print("-> Pipeline finalizado exitosamente.")
+
+    # Generación y escritura del archivo log histórico continuo (Modo 'a')
+    log_report_path = "pipeline_execution.log"
+    timestamp_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    with open(log_report_path, "a", encoding="utf-8") as log_file:
+        log_file.write("\n==================================================\n")
+        log_file.write(f" EJECUCIÓN DEL PIPELINE - {timestamp_now}\n")
+        log_file.write("==================================================\n")
+        log_file.write(f"URL Procesada: {args.url}\n")
+        log_file.write(f"Archivo de salida esperado: {args.out}\n")
+        log_file.write(f"Recortes configurados: Inicio: {args.trim_start}s | Fin: {args.trim_end}s\n\n")
+        
+        log_file.write("[+] PROCESOS COMPLETADOS CON ÉXITO:\n")
+        if SUCCESS_LOG:
+            for success in SUCCESS_LOG:
+                log_file.write(f" {success}\n")
+        else:
+            log_file.write(" Ninguno.\n")
+            
+        log_file.write("\n[-] ANOMALÍAS / ARCHIVOS NO CREADOS:\n")
+        if ERROR_LOG:
+            for error in ERROR_LOG:
+                log_file.write(f" {error}\n")
+        else:
+            log_file.write(" [✓] ¡Felicidades! Todo el bloque finalizó con 0 errores para esta sesión.\n")
+            
+        log_file.write("--------------------------------------------------\n")
+
+    if ERROR_LOG:
+        print(f"-> Pipeline finalizado con algunas advertencias. El historial continuo se actualizó en: {log_report_path}")
+    else:
+        print(f"-> Pipeline finalizado exitosamente de forma completa. Registro guardado en: {log_report_path}")
 
 if __name__ == '__main__':
     main()
