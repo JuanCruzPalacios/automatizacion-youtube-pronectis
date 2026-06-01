@@ -212,20 +212,45 @@ class PipelineRunner:
             "quiet": True,
             "no_warnings": True,
             "progress_hooks": self._ydl_hooks(),
-            
-            # ── AGREGAR ÚNICAMENTE ESTAS LÍNEAS ABAJO ──
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["android", "web_embedded"]
-                }
-            }
-            # ──────────────────────────────────────────
         }
 
-        self.emit("log", msg="→ [Seguridad] Forzando firma de cliente móvil Android para bypass...")
+        # ── CONFIGURACIÓN DE COOKIES PARA EVITAR EL BLOQUEO DE BOT ──
+        # Render suele montar los Secret Files en la raíz del proyecto o en /etc/secrets/
+        posibles_rutas_cookies = [
+            "cookies.txt", 
+            "/etc/secrets/cookies.txt",
+            os.path.join(SCRIPT_DIR, "cookies.txt")
+        ]
+        
+        cookie_detectada = None
+        for ruta in posibles_rutas_cookies:
+            if os.path.exists(ruta):
+                cookie_detectada = ruta
+                break
+                
+        if cookie_detectada:
+            self.emit("log", msg=f"→ [Seguridad] Usando archivo de cookies detectado en: {cookie_detectada}")
+            opts["cookiefile"] = cookie_detectada
+        else:
+            self.emit("log", msg="⚠️ Aviso: No se detectó ningún archivo 'cookies.txt'. Se intentará descargar sin cookies.")
+        # ───────────────────────────────────────────────────────────
 
         with yt_dlp.YoutubeDL(opts) as ydl:
             ydl.download([url])
+
+        # yt-dlp sometimes appends extra chars; find the actual file
+        if not os.path.exists(temp_path):
+            base = os.path.splitext(temp_path)[0]
+            parent = os.path.dirname(temp_path) or "."
+            for f in os.listdir(parent):
+                if f.startswith(os.path.basename(base)) and f.endswith(".mp4"):
+                    temp_path = os.path.join(parent, f)
+                    break
+        if not os.path.exists(temp_path):
+            raise FileNotFoundError("No se pudo localizar el video descargado en disco.")
+
+        self.emit("log", msg="→ Descarga completada exitosamente.")
+        return temp_path
 
     def _step_trim(self, input_path: str, output_path: str,
                    start: float, end: float) -> str:
