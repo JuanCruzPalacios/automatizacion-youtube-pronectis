@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pydantic
+yt-dlp
+google-genai
+python-dotenv
+static-ffmpeg
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
