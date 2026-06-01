@@ -204,6 +204,7 @@ class PipelineRunner:
     def _step_download(self, url: str, temp_path: str) -> str:
         import yt_dlp
         self.emit("log", msg=f"[1/5] Descargando video de YouTube: {url}")
+        
         opts = {
             "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "outtmpl": temp_path,
@@ -212,6 +213,28 @@ class PipelineRunner:
             "no_warnings": True,
             "progress_hooks": self._ydl_hooks(),
         }
+
+        # ── CONFIGURACIÓN DE COOKIES PARA EVITAR EL BLOQUEO DE BOT ──
+        # Render suele montar los Secret Files en la raíz del proyecto o en /etc/secrets/
+        posibles_rutas_cookies = [
+            "cookies.txt", 
+            "/etc/secrets/cookies.txt",
+            os.path.join(SCRIPT_DIR, "cookies.txt")
+        ]
+        
+        cookie_detectada = None
+        for ruta in posibles_rutas_cookies:
+            if os.path.exists(ruta):
+                cookie_detectada = ruta
+                break
+                
+        if cookie_detectada:
+            self.emit("log", msg=f"→ [Seguridad] Usando archivo de cookies detectado en: {cookie_detectada}")
+            opts["cookiefile"] = cookie_detectada
+        else:
+            self.emit("log", msg="⚠️ Aviso: No se detectó ningún archivo 'cookies.txt'. Se intentará descargar sin cookies.")
+        # ───────────────────────────────────────────────────────────
+
         with yt_dlp.YoutubeDL(opts) as ydl:
             ydl.download([url])
 

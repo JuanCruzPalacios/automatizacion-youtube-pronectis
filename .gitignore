@@ -3,3 +3,4 @@
 .env.*.local
 client_secrets.json
 youtube_token.pickle
+cookies.txt
