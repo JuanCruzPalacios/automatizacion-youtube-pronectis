@@ -346,16 +346,85 @@ class PipelineRunner:
     def _step_upload(self, video_file: str, title: str, description: str,
                      privacy: str = "private") -> Optional[str]:
         self.emit("log", msg=f"[YouTube] Iniciando subida: {os.path.basename(video_file)}")
+        
+        import pickle
+        from google.auth.transport.requests import Request
+        from googleapiclient.discovery import build
+        
+        # Definimos la ruta exacta donde vive tu archivo de tokens en el proyecto
+        ruta_token = os.path.join(SCRIPT_DIR, "youtube_token.pickle") 
+        
         try:
-            youtube = automate.get_youtube_service()
+            # 1. Intentamos leer las credenciales directo del archivo físico .pickle
+            if os.path.exists(ruta_token):
+                with open(ruta_token, "rb") as token_file:
+                    creds = pickle.load(token_file)
+                
+                # 🚨 RENOVAR AUTOMÁTICAMENTE SI EXPIRO:
+                # Si el token de acceso de 1 hora venció, el Refresh Token lo extiende otra hora más
+                if creds and creds.expired and creds.refresh_token:
+                    self.emit("log", msg="→ [Seguridad] El token de acceso expiró. Renovándolo automáticamente...")
+                    creds.refresh(Request())
+                    
+                    # Volvemos a escribir el archivo pickle modificado con la nueva fecha de vida
+                    with open(ruta_token, "wb") as token_file:
+                        pickle.dump(creds, token_file)
+                    self.emit("log", msg="→ [Seguridad] Token renovado y guardado con éxito en disco.")
+                
+                # Construimos el cliente oficial usando las credenciales frescas
+                youtube = build('youtube', 'v3', credentials=creds)
+                
+            else:
+                # Si no existiera el archivo en la carpeta por alguna razón, usamos el fallback de automate
+                self.emit("log", msg="⚠️ Advertencia: No se encontró 'youtube_token.pickle'. Usando fallback de automate.py")
+                youtube = automate.get_youtube_service()
+                
         except Exception as e:
             self.emit("log", msg=f"❌ Error autenticando con YouTube: {e}")
-            if "youtube_token.pickle" in str(e) or "invalid_grant" in str(e).lower():
+            if "invalid_grant" in str(e).lower():
                 self.emit("token_expired", msg=(
-                    "El token de YouTube expiró. Ejecutá en el servidor: "
-                    "python automate.py -u 'URL' para regenerarlo."
+                    "El token fue revocado o es totalmente inválido. "
+                    "Requiere una nueva autenticación manual desde la consola."
                 ))
             return None
+
+        # 2. Proceso de subida multimedia original
+        from googleapiclient.http import MediaFileUpload
+        body = {
+            "snippet": {
+                "title": title,
+                "description": description,
+                "tags": ["Pronectis", "Google Workspace", "Automatización", "SEO"],
+                "categoryId": "28",
+            },
+            "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
+        }
+        media = MediaFileUpload(
+            video_file, chunksize=1024 * 1024, resumable=True, mimetype="video/mp4"
+        )
+        request = youtube.videos().insert(
+            part=",".join(body.keys()), body=body, media_body=media
+        )
+
+        response = None
+        while response is None:
+            try:
+                status, response = request.next_chunk()
+                if status:
+                    pct = int(status.progress() * 100)
+                    self.emit("upload_progress", pct=pct)
+            except Exception as e:
+                self.emit("log", msg=f"❌ Error durante la subida a YouTube: {e}")
+                return None
+
+        if "id" in response:
+            vid_id = response["id"]
+            automate.SUCCESS_LOG.append(
+                f"[✓] YouTube publicado ({privacy}): https://youtu.be/{vid_id}"
+            )
+            self.emit("log", msg=f"✅ Video subido exitosamente. ID: {vid_id}")
+            return vid_id
+        return None
 
         from googleapiclient.http import MediaFileUpload
         body = {

@@ -349,17 +349,39 @@ def get_youtube_service():
         with open(token_path, 'rb') as token:
             credentials = pickle.load(token)
 
+    # 🚨 LOGICA CORREGIDA: Si el token existe pero expiró, lo refrescamos usando el Refresh Token
+    if credentials and credentials.expired and credentials.refresh_token:
+        from google.auth.transport.requests import Request
+        print("-> [Seguridad] El token de acceso expiró. Renovándolo automáticamente...")
+        credentials.refresh(Request())
+        # Pisamos el archivo con el token actualizado para que dure otra hora más de fondo
+        with open(token_path, 'wb') as token:
+            pickle.dump(credentials, token)
+
+    # Si de verdad no hay credenciales válidas (o no se pudieron refrescar)
     if not credentials or not credentials.valid:
         if not os.path.exists(secrets_path):
             raise FileNotFoundError(f"Falta el archivo indispensable '{secrets_path}' en el directorio.")
         
         print("\n[OAuth] Abriendo el navegador para validar los accesos con tu cuenta Workspace...")
         flow = InstalledAppFlow.from_client_secrets_file(secrets_path, SCOPES)
-        credentials = flow.run_local_server(port=0)
+        
+        # 🚨 CAMBIO CRUCIAL: Forzamos a Google a que nos entregue el Refresh Token definitivo
+        authorization_url, state = flow.authorization_url(
+            access_type='offline',
+            prompt='consent'
+        )
+        
+        # Ejecutamos el servidor local usando los parámetros offline pre-configurados
+        credentials = flow.run_local_server(
+            port=0,
+            access_type='offline',
+            prompt='consent'
+        )
         
         with open(token_path, 'wb') as token:
             pickle.dump(credentials, token)
-            print("-> Token guardado exitosamente para usos automatizados.")
+            print("-> Token permanente guardado exitosamente para usos automatizados.")
 
     return build('youtube', 'v3', credentials=credentials)
 
