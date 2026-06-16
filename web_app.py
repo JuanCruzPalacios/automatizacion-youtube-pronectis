@@ -41,6 +41,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 🚀 NUEVO BLOQUE INTEGRAL: Limpia HTTP y WebSockets al mismo tiempo
+@app.on_event("startup")
+async def blindar_rutas_load_balancer():
+    original_asgi = app.asgi_app
+    
+    async def interceptor_asgi(scope, receive, send):
+        # Si la conexión es HTTP o WebSocket y viene con /app, limpiamos la ruta interna
+        if scope["type"] in ("http", "websocket") and scope["path"].startswith("/app"):
+            scope["path"] = scope["path"].replace("/app", "", 1) or "/"
+        await original_asgi(scope, receive, send)
+        
+    app.asgi_app = interceptor_asgi
+
+
 # Serve static files (CSS, JS)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 

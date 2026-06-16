@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function connectWebSocket() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${proto}//${location.host}/ws`;
+  const wsUrl = `${proto}//${location.host}/app/ws`;
 
   state.ws = new WebSocket(wsUrl);
 
