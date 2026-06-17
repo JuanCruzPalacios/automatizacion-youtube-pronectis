@@ -458,6 +458,30 @@
   </div>
 </div>
 
+<!-- ═══════════════════════════ SHUTDOWN MODAL ═══════════════════════════════ -->
+<div class="modal-overlay" id="shutdownModal" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width: 440px;">
+    <div class="modal-header">
+      <div class="modal-icon-wrap" style="background: var(--yellow-dim); border-color: rgba(245,158,11,0.3); color: var(--yellow)">⏳</div>
+      <div>
+        <div class="modal-title">Apagado por Inactividad</div>
+        <div class="modal-subtitle">No se detectó actividad durante 15 minutos.</div>
+      </div>
+    </div>
+    <div style="font-size: 14px; margin-bottom: 24px; color: var(--text-2); line-height: 1.5;">
+      La máquina virtual se apagará en <strong id="shutdownCountdown" style="color: var(--text-1); font-size: 16px;">30</strong> segundos para ahorrar costos.
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="respondShutdown('cancel')">
+        ✕ Cancelar apagado
+      </button>
+      <button class="btn btn-danger" onclick="respondShutdown('confirm')">
+        Apagar ahora
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════════════════════ TOAST CONTAINER ══════════════════════════════ -->
 <div id="toastContainer" role="status" aria-live="polite"></div>
 

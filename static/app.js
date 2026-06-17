@@ -145,8 +145,49 @@ function handleWsMessage(msg) {
       toast('⚠️ ' + msg.msg, 'warn', 10000);
       break;
 
+    case 'shutdown_warning':
+      showShutdownModal(msg.timeout);
+      break;
+
     default:
       console.log('WS msg:', msg);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shutdown Modal
+// ─────────────────────────────────────────────────────────────────────────────
+
+let shutdownTimer = null;
+let shutdownSeconds = 30;
+
+function showShutdownModal(timeout) {
+  shutdownSeconds = timeout || 30;
+  document.getElementById('shutdownCountdown').textContent = shutdownSeconds;
+  document.getElementById('shutdownModal').classList.add('open');
+  
+  clearInterval(shutdownTimer);
+  shutdownTimer = setInterval(() => {
+    shutdownSeconds--;
+    if (shutdownSeconds <= 0) {
+      clearInterval(shutdownTimer);
+      document.getElementById('shutdownModal').classList.remove('open');
+    } else {
+      document.getElementById('shutdownCountdown').textContent = shutdownSeconds;
+    }
+  }, 1000);
+}
+
+function respondShutdown(action) {
+  clearInterval(shutdownTimer);
+  document.getElementById('shutdownModal').classList.remove('open');
+  
+  if (action === 'cancel') {
+    sendWs({ type: 'cancel_shutdown' });
+    toast('Apagado automático cancelado. Temporizador reiniciado.', 'info');
+  } else if (action === 'confirm') {
+    sendWs({ type: 'confirm_shutdown' });
+    toast('Apagando la máquina virtual...', 'warn');
   }
 }
 

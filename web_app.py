@@ -12,6 +12,8 @@ import os
 import sys
 import asyncio
 import datetime
+import time
+import subprocess
 from typing import List, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
@@ -26,6 +28,8 @@ STATIC_DIR  = os.path.join(SCRIPT_DIR, "static")
 
 sys.path.insert(0, SCRIPT_DIR)
 from pipeline_runner import PipelineRunner
+
+LAST_ACTIVITY_TIMESTAMP = time.time()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # App setup
@@ -44,6 +48,9 @@ app.add_middleware(
 # EL PARCHE CORRECTO: Reescribe la ruta para HTTP y WebSockets sin romper nada
 @app.middleware("http")
 async def limpiar_ruta_app(request, call_next):
+    global LAST_ACTIVITY_TIMESTAMP
+    LAST_ACTIVITY_TIMESTAMP = time.time()
+    
     # Si por alguna razón entra acá algo de static, lo dejamos pasar
     if "/static" in request.scope["path"]:
         return await call_next(request)
@@ -107,11 +114,44 @@ async def _drain_queue():
                 break
 
 
+async def _inactivity_monitor():
+    while True:
+        await asyncio.sleep(60)
+        # Si el pipeline se está ejecutando, consideramos que la app está activa
+        if runner.status != "idle":
+            global LAST_ACTIVITY_TIMESTAMP
+            LAST_ACTIVITY_TIMESTAMP = time.time()
+            continue
+            
+        idle_time = time.time() - LAST_ACTIVITY_TIMESTAMP
+        if idle_time > 15 * 60:
+            print(f"[{datetime.datetime.now()}] Inactividad detectada (15 min). Avisando al usuario...")
+            await manager.broadcast({"type": "shutdown_warning", "timeout": 30})
+            
+            cancelled = False
+            for _ in range(30):
+                await asyncio.sleep(1)
+                if time.time() - LAST_ACTIVITY_TIMESTAMP < 15 * 60:
+                    cancelled = True
+                    break
+            
+            if cancelled:
+                print(f"[{datetime.datetime.now()}] Apagado cancelado por el usuario.")
+                continue
+                
+            print(f"[{datetime.datetime.now()}] Tiempo agotado o apagado confirmado. Apagando VM...")
+            if os.name == 'nt':
+                subprocess.run(["shutdown", "/s", "/t", "5"])
+            else:
+                subprocess.run(["sudo", "shutdown", "-h", "now"])
+            break # Salimos del loop porque se está apagando
+
 @app.on_event("startup")
 async def _startup():
     os.makedirs(OUTPUTS_DIR, exist_ok=True)
     os.makedirs(STATIC_DIR, exist_ok=True)
     asyncio.create_task(_drain_queue())
+    asyncio.create_task(_inactivity_monitor())
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -345,6 +385,21 @@ async def ws_endpoint(ws: WebSocket):
     try:
         while True:
             data = await ws.receive_json()
+            global LAST_ACTIVITY_TIMESTAMP
+            
+            if data.get("type") == "cancel_shutdown":
+                LAST_ACTIVITY_TIMESTAMP = time.time()
+                continue
+            elif data.get("type") == "confirm_shutdown":
+                import subprocess, os
+                if os.name == 'nt':
+                    subprocess.run(["shutdown", "/s", "/t", "5"])
+                else:
+                    subprocess.run(["sudo", "shutdown", "-h", "now"])
+                continue
+                
+            LAST_ACTIVITY_TIMESTAMP = time.time()
+            
             # Client can respond to error prompts directly via WebSocket
             if data.get("type") == "prompt_response":
                 action = data.get("action", "cancel")
