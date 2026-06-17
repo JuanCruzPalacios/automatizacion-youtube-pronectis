@@ -41,24 +41,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🚀 NUEVO BLOQUE INTEGRAL: Limpia HTTP y WebSockets al mismo tiempo
-@app.on_event("startup")
-async def blindar_rutas_load_balancer():
-    original_asgi = app.asgi_app
-    
-    async def interceptor_asgi(scope, receive, send):
-        # Si la conexión es HTTP o WebSocket y viene con /app, limpiamos la ruta interna
-        if scope["type"] in ("http", "websocket") and scope["path"].startswith("/app"):
-            scope["path"] = scope["path"].replace("/app", "", 1) or "/"
-        await original_asgi(scope, receive, send)
+# EL PARCHE CORRECTO: Reescribe la ruta para HTTP y WebSockets sin romper nada
+@app.middleware("http")
+async def limpiar_ruta_app(request, call_next):
+    # Si por alguna razón entra acá algo de static, lo dejamos pasar
+    if "/static" in request.scope["path"]:
+        return await call_next(request)
         
-    app.asgi_app = interceptor_asgi
-
+    if request.scope["path"].startswith("/app"):
+        request.scope["path"] = request.scope["path"].replace("/app", "", 1)
+        if not request.scope["path"]:
+            request.scope["path"] = "/"
+            
+    return await call_next(request)
 
 # Serve static files (CSS, JS)
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # Singleton pipeline runner
+
 runner = PipelineRunner()
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -329,6 +331,7 @@ async def save_settings(req: SettingsSave):
 
 # ── WebSocket ─────────────────────────────────────────────────────────────────
 
+@app.websocket("/app/ws")
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
     await manager.connect(ws)
