@@ -1,0 +1,314 @@
+
+==================================================
+ EJECUCIÓN - 2026-06-18 10:31:57
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Archivo: final_output.mp4
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: final_output_descripcion.txt
+  [✓] Título IA guardado: final_output_titulo.txt
+  [✓] Fusión exitosa: final_output.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 10:44:46
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Archivo: final_output.mp4
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: final_output_descripcion.txt
+  [✓] Título IA guardado: final_output_titulo.txt
+  [✓] Formato Short (pad) exitoso: final_output.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 10:46:04
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Archivo: final_output.mp4
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: final_output_descripcion.txt
+  [✓] Título IA guardado: final_output_titulo.txt
+  [✓] Formato Short (crop) exitoso: final_output.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 10:46:57
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Archivo: final_output.mp4
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: final_output_descripcion.txt
+  [✓] Título IA guardado: final_output_titulo.txt
+  [✓] Formato Short (crop) exitoso: final_output.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 11:03:36
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Archivo: final_output.mp4
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: final_output_descripcion.txt
+  [✓] Título IA guardado: final_output_titulo.txt
+  [✓] Descripción IA guardada: final_output_descripcion.txt
+  [✓] Título IA guardado: final_output_titulo.txt
+
+[-] ERRORES:
+  [-] ERROR EN PASO [Procesamiento de Video (FFmpeg)]: module 'automate' has no attribute 'get_media_info'
+  [-] ERROR EN PASO [Procesamiento de Video (FFmpeg)]: module 'automate' has no attribute 'get_media_info'
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 11:06:00
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Archivo: final_output.mp4
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: final_output_descripcion.txt
+  [✓] Título IA guardado: final_output_titulo.txt
+  [✓] Fusión exitosa: final_output.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 11:12:31
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Archivo: final_output.mp4
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: final_output_descripcion.txt
+  [✓] Título IA guardado: final_output_titulo.txt
+  [✓] Fusión exitosa: final_output.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 11:17:48
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Archivo: final_output.mp4
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: final_output_descripcion.txt
+  [✓] Título IA guardado: final_output_titulo.txt
+  [✓] Miniatura generada: final_output_thumbnail.jpg
+  [✓] Fusión exitosa: final_output.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 11:22:45
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Archivo: final_output.mp4
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: final_output_descripcion.txt
+  [✓] Título IA guardado: final_output_titulo.txt
+  [✓] Formato Short (crop) aplicado.
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 11:29:28
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Archivo: final_output.mp4
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: final_output_descripcion.txt
+  [✓] Título IA guardado: final_output_titulo.txt
+  [✓] Formato Short (pad) aplicado.
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 12:00:49
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Proyecto: proyecto_20260618_115955
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: descripcion.txt
+  [✓] Título IA guardado: titulo.txt
+  [✓] Miniatura generada: thumbnail.jpg
+  [✓] Descripción IA guardada: descripcion.txt
+  [✓] Título IA guardado: titulo.txt
+  [✓] Fusión exitosa: video.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 12:04:52
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Proyecto: proyecto_20260618_120426
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: descripcion.txt
+  [✓] Título IA guardado: titulo.txt
+  [✓] Formato Short (crop) aplicado.
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 12:12:39
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Proyecto: Playas_MBAPPE_20260618_121147
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: descripcion.txt
+  [✓] Título IA guardado: titulo.txt
+  [✓] Miniatura generada: thumbnail.jpg
+  [✓] Fusión exitosa: video.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 12:17:08
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Proyecto: ske_20260618_121623
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: descripcion.txt
+  [✓] Título IA guardado: titulo.txt
+  [✓] Miniatura generada: thumbnail.jpg
+  [✓] Fusión exitosa: video.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 12:20:08
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Proyecto: paipepepepe_20260618_121901
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: descripcion.txt
+  [✓] Título IA guardado: titulo.txt
+  [✓] Miniatura generada: thumbnail.jpg
+  [✓] Fusión exitosa: video.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 12:21:43
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Proyecto: proyecto_20260618_122056
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: descripcion.txt
+  [✓] Título IA guardado: titulo.txt
+  [✓] Miniatura generada: thumbnail.jpg
+  [✓] Fusión exitosa: video.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 12:23:04
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Proyecto: proyecto_20260618_122212
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: descripcion.txt
+  [✓] Título IA guardado: titulo.txt
+  [✓] Miniatura generada: thumbnail.jpg
+  [✓] Fusión exitosa: video.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 12:36:13
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Proyecto: proyecto_20260618_123525
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Fusión exitosa: video.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-18 12:42:40
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Proyecto: proyecto_20260618_124153
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: descripcion.txt
+  [✓] Título IA guardado: titulo.txt
+  [✓] Miniatura generada: thumbnail.jpg
+  [✓] Fusión exitosa: video.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------

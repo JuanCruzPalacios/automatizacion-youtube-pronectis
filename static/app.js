@@ -19,6 +19,39 @@ const state = {
   autoUpload:      false,
 };
 
+function updateTitleCount() {
+  const el = document.getElementById('editTitle');
+  const countEl = document.getElementById('editTitleCount');
+  if (el && countEl) {
+    countEl.textContent = `${el.value.length}/100`;
+  }
+}
+
+function updateDescCount() {
+  const el = document.getElementById('editDescription');
+  const countEl = document.getElementById('editDescCount');
+  if (el && countEl) {
+    countEl.textContent = `${el.value.length}/5000`;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CANCEL PIPELINE
+// ─────────────────────────────────────────────────────────────────────────────
+async function cancelPipeline() {
+  if (state.pipelineStatus === 'idle') return;
+  try {
+    const res = await fetch('/api/cancel-pipeline', { method: 'POST' });
+    if (res.ok) {
+      toast('Pipeline cancelado.', 'success');
+      setPipelineIdle();
+      showPipelineBadge('idle');
+    }
+  } catch (e) {
+    toast('Error cancelando pipeline.', 'error');
+  }
+}
+
 // WebSocket event → step number mapping
 const STEP_NAMES = ['', 'Descarga', 'Gemini IA', 'Fusión FFmpeg', 'YouTube', 'Limpieza'];
 
@@ -29,7 +62,7 @@ const STEP_NAMES = ['', 'Descarga', 'Gemini IA', 'Fusión FFmpeg', 'YouTube', 'L
 document.addEventListener('DOMContentLoaded', () => {
   connectWebSocket();
   loadSettings();
-  refreshOutputs();
+  loadHistory();
   refreshLog();
 
   // Character counters for editable fields
@@ -197,9 +230,11 @@ function respondShutdown(action) {
 
 async function startPipeline() {
   const url        = document.getElementById('inputUrl').value.trim();
-  const outName    = document.getElementById('inputOut').value.trim() || 'final_output.mp4';
+  const projectName= (document.getElementById('inputProjectName').value || '').trim();
   const trimStart  = parseFloat(document.getElementById('inputTrimStart').value) || 0;
   const trimEnd    = parseFloat(document.getElementById('inputTrimEnd').value) || 0;
+  const videoFormat= document.getElementById('selectVideoFormat').value;
+  const extraContext = document.getElementById('inputExtraContext').value.trim();
   const autoUpload = document.getElementById('toggleAutoUpload').checked;
 
   // Validate
@@ -212,7 +247,15 @@ async function startPipeline() {
     return;
   }
 
-  const body = { url, out_filename: outName, trim_start: trimStart, trim_end: trimEnd, auto_upload: autoUpload };
+  const body = { 
+    url, 
+    project_name: projectName,
+    trim_start: trimStart, 
+    trim_end: trimEnd, 
+    video_format: videoFormat, 
+    extra_context: extraContext, 
+    auto_upload: autoUpload 
+  };
 
   try {
     const res = await fetch('/api/run', {
@@ -231,14 +274,14 @@ async function startPipeline() {
     setPipelineRunning();
     clearConsole();
     logLine(`→ Pipeline iniciado para: ${url}`, 'info');
-    logLine(`→ Archivo de salida: ${outName}`, 'dim');
     if (trimStart > 0 || trimEnd > 0) {
       logLine(`→ Recorte configurado: -${trimStart}s inicio / -${trimEnd}s fin`, 'dim');
     }
     logLine(`→ Modo: ${autoUpload ? 'Subida automática activada' : 'Revisión manual antes de subir'}`, 'dim');
 
   } catch (e) {
-    toast('❌ No se pudo conectar con el servidor.', 'error');
+    console.error(e);
+    toast('❌ Ocurrió un error al iniciar el pipeline.', 'error');
   }
 }
 
@@ -327,14 +370,12 @@ function onPipelineDone(outputs, errors) {
   if (outputs) {
     populateReviewPanel(outputs);
     toast('✅ Pipeline completado. Revisá el panel de "Revisión".', 'success', 6000);
-    // If no auto-upload, gently nudge user to review
-    if (!state.autoUpload) {
-      setTimeout(() => showPanel('review'), 1500);
-    }
+    // Always switch to review tab
+    setTimeout(() => showPanel('review'), 800);
   }
 
-  refreshOutputs();
   refreshLog();
+  loadHistory();
 }
 
 function onPipelineAborted(reason) {
@@ -562,6 +603,24 @@ function populateReviewPanel(outputs) {
   document.getElementById('reviewEmpty').style.display   = 'none';
   document.getElementById('reviewContent').style.display = 'block';
 
+  // Project name banner
+  const banner = document.getElementById('projectNameBanner');
+  const nameLabel = document.getElementById('projectNameLabel');
+  const ytLinkBtn = document.getElementById('projectYoutubeLink');
+  
+  if (outputs.project_name && banner && nameLabel) {
+    nameLabel.textContent = outputs.project_name;
+    banner.style.display = 'flex';
+    if (outputs.youtube_url && ytLinkBtn) {
+      ytLinkBtn.href = outputs.youtube_url;
+      ytLinkBtn.style.display = 'inline-block';
+    } else if (ytLinkBtn) {
+      ytLinkBtn.style.display = 'none';
+    }
+  } else if (banner) {
+    banner.style.display = 'none';
+  }
+
   // Video player
   const player      = document.getElementById('videoPlayer');
   const placeholder = document.getElementById('videoPlaceholder');
@@ -576,7 +635,7 @@ function populateReviewPanel(outputs) {
 
     const dlVideo = document.getElementById('btnDownloadVideo');
     dlVideo.href         = videoUrl;
-    dlVideo.download     = outputs.video;
+    dlVideo.download     = outputs.video.split('/').pop() || 'video.mp4';
     dlVideo.style.display = 'inline-flex';
   }
 
@@ -584,13 +643,13 @@ function populateReviewPanel(outputs) {
   if (outputs.desc_file) {
     const dlDesc = document.getElementById('btnDownloadDesc');
     dlDesc.href         = `/api/outputs/${encodeURIComponent(outputs.desc_file)}`;
-    dlDesc.download     = outputs.desc_file;
+    dlDesc.download     = 'descripcion.txt';
     dlDesc.style.display = 'inline-flex';
   }
   if (outputs.titulo_file) {
     const dlTitle = document.getElementById('btnDownloadTitle');
     dlTitle.href         = `/api/outputs/${encodeURIComponent(outputs.titulo_file)}`;
-    dlTitle.download     = outputs.titulo_file;
+    dlTitle.download     = 'titulo.txt';
     dlTitle.style.display = 'inline-flex';
   }
 
@@ -601,6 +660,35 @@ function populateReviewPanel(outputs) {
   descInput.value   = outputs.descripcion || '';
   updateTitleCount();
   updateDescCount();
+
+  // Tags chips
+  setTagsFromString(outputs.tags || '');
+  
+  const isShort = outputs.video_format && outputs.video_format.includes('short');
+  
+  if (outputs.thumbnail && !isShort) {
+    document.getElementById('currentThumbnailFile').value = outputs.thumbnail;
+    const thumbImg = document.getElementById('reviewThumbnail');
+    thumbImg.src = `/api/outputs/${encodeURIComponent(outputs.thumbnail)}?t=` + new Date().getTime();
+    thumbImg.style.display = 'inline-block';
+    document.getElementById('thumbnailWrapper').style.display = 'block';
+  } else {
+    document.getElementById('currentThumbnailFile').value = '';
+    document.getElementById('reviewThumbnail').style.display = 'none';
+    document.getElementById('thumbnailWrapper').style.display = 'none';
+  }
+  
+  // Hide thumbnail section entirely if format is short
+  const thumbCard = document.getElementById('thumbnailCard');
+  if (thumbCard) {
+    if (isShort) {
+      thumbCard.style.display = 'none';
+    } else {
+      thumbCard.style.display = 'block';
+    }
+  }
+
+  loadPlaylists();
 
   // If already uploaded to YouTube automatically
   if (outputs.youtube_url) {
@@ -615,6 +703,150 @@ function populateReviewPanel(outputs) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Tags chip system
+// ─────────────────────────────────────────────────────────────────────────────
+
+let _tags = [];
+
+function setTagsFromString(str) {
+  _tags = str.split(',').map(t => t.trim()).filter(Boolean);
+  renderTagChips();
+}
+
+function getTagsAsString() {
+  return _tags.join(', ');
+}
+
+function renderTagChips() {
+  const list = document.getElementById('tagsChipList');
+  if (!list) return;
+  list.innerHTML = '';
+  _tags.forEach((tag, idx) => {
+    const chip = document.createElement('span');
+    chip.className = 'tag-chip';
+    chip.innerHTML = `${escapeHtml(tag)}<button class="tag-chip-remove" onclick="removeTag(${idx})" aria-label="Eliminar ${escapeHtml(tag)}">×</button>`;
+    list.appendChild(chip);
+  });
+  const hidden = document.getElementById('editTags');
+  if (hidden) hidden.value = getTagsAsString();
+  const hint = document.getElementById('tagsCountHint');
+  if (hint) {
+    const len = getTagsAsString().length;
+    hint.textContent = `${len} / 500 caracteres`;
+    hint.style.color = len > 500 ? 'var(--red)' : '';
+  }
+}
+
+function removeTag(idx) {
+  _tags.splice(idx, 1);
+  renderTagChips();
+}
+
+function addTagFromInput() {
+  const input = document.getElementById('tagsInput');
+  if (!input) return;
+  const raw = input.value.replace(/,/g, '').trim();
+  if (raw && !_tags.includes(raw)) {
+    _tags.push(raw);
+    renderTagChips();
+  }
+  input.value = '';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const tagsInput = document.getElementById('tagsInput');
+  if (!tagsInput) return;
+  tagsInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addTagFromInput();
+    } else if (e.key === 'Backspace' && tagsInput.value === '' && _tags.length > 0) {
+      _tags.pop();
+      renderTagChips();
+    }
+  });
+  tagsInput.addEventListener('blur', () => {
+    if (tagsInput.value.trim()) addTagFromInput();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// History panel
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function loadHistory() {
+  const container = document.getElementById('historyList');
+  if (!container) return;
+  try {
+    const res = await fetch('/api/history');
+    const data = await res.json();
+    const projects = data.projects || [];
+    if (projects.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">📂</div>
+          <div class="empty-text">No hay proyectos anteriores todavía. Ejecutá un pipeline para crear el primero.</div>
+        </div>`;
+      return;
+    }
+    container.innerHTML = projects.map(p => {
+      const title  = p.titulo || p.project_name || '(Sin título)';
+      const format = p.video_format ? (p.video_format === 'normal' ? '🎬 Normal' : '📱 Short') : '';
+      const thumb  = p.thumbnail
+        ? `<img src="/api/outputs/${encodeURIComponent(p.thumbnail)}?t=${Date.now()}" alt="thumb">`
+        : `<span style="font-size:2rem;">🎬</span>`;
+
+      // Status badge
+      const statusMap = {
+        'done':        ['✅ Completado',  '#22c55e'],
+        'in_progress': ['⏳ En progreso', '#f59e0b'],
+        'error':       ['❌ Con errores', '#ef4444'],
+        'aborted':     ['🚫 Cancelado',   '#6b7280'],
+      };
+      const [statusLabel, statusColor] = statusMap[p.status] || ['— Desconocido', '#6b7280'];
+      const statusBadge = `<span style="background:${statusColor}22; color:${statusColor}; border:1px solid ${statusColor}44; border-radius:12px; padding:2px 8px; font-size:11px; font-weight:600;">${statusLabel}</span>`;
+
+      // Source URL chip (truncated)
+      const srcDisplay = (p.source_url || '').replace('https://www.youtube.com/watch?v=','youtu.be/').replace('https://youtu.be/','youtu.be/');
+      const srcUrl = p.source_url
+        ? `<div style="margin-top:4px;"><span title="${escapeHtml(p.source_url)}" style="color:var(--text-3); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:220px; display:inline-block; vertical-align:middle;">🔗 ${escapeHtml(srcDisplay)}</span></div>`
+        : '';
+
+      // YouTube published link
+      const ytLink = p.youtube_url
+        ? `<a href="${escapeHtml(p.youtube_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#ff4444; font-size:11px; font-weight:600; text-decoration:none; background:#ff444420; border:1px solid #ff444440; border-radius:10px; padding:2px 8px; white-space:nowrap;">▶ Ver en YouTube</a>`
+        : '';
+
+      return `
+        <div class="project-card" onclick='loadProjectIntoReview(${JSON.stringify(p).replace(/'/g, "&#39;")})'>
+          <div class="project-card-thumb">${thumb}</div>
+          <div class="project-card-info" style="overflow:hidden;">
+            <div class="project-card-title">${escapeHtml(title)}</div>
+            <div class="project-card-meta" style="flex-wrap:wrap; gap:6px; align-items:center;">
+              <span style="font-size:11px; color:var(--text-3);">📁 ${escapeHtml(p.project_name || '')}</span>
+              ${statusBadge}
+              ${format ? `<span style="font-size:11px;">${format}</span>` : ''}
+              ${ytLink}
+            </div>
+            ${srcUrl}
+          </div>
+          <div class="project-card-arrow">›</div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-text">Error cargando proyectos: ${escapeHtml(e.message)}</div></div>`;
+  }
+}
+
+function loadProjectIntoReview(outputs) {
+  state.lastOutputs = outputs;
+  populateReviewPanel(outputs);
+  showPanel('review');
+  toast(`📁 Proyecto "${outputs.project_name}" cargado en Revisión.`, 'success', 4000);
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 // YouTube upload (manual)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -626,7 +858,12 @@ async function uploadToYouTube() {
 
   const title       = document.getElementById('editTitle').value.trim();
   const description = document.getElementById('editDescription').value.trim();
+  const tags        = document.getElementById('editTags').value.trim();
   const privacy     = document.getElementById('privacySelect').value;
+  const category_id = document.getElementById('categorySelect').value;
+  const playlist_id = document.getElementById('playlistSelect').value;
+  const use_thumb   = document.getElementById('toggleUseThumbnail').checked;
+  const thumb_file  = use_thumb ? document.getElementById('currentThumbnailFile').value : '';
 
   if (!title) {
     toast('❌ El título no puede estar vacío.', 'error');
@@ -655,6 +892,10 @@ async function uploadToYouTube() {
         video_filename: state.lastOutputs.video,
         title,
         description,
+        tags,
+        category_id,
+        playlist_id,
+        thumbnail_file: thumb_file,
         privacy_status: privacy,
       }),
     });
@@ -727,25 +968,214 @@ function onYoutubeError(error) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function showPanel(name) {
-  const panels  = ['pipeline', 'review', 'history', 'settings'];
+  const panels  = ['pipeline', 'review', 'history', 'settings', 'help'];
   const navBtns = {
     pipeline: 'navPipeline', review: 'navReview',
-    history: 'navHistory', settings: 'navSettings',
+    history: 'navHistory', settings: 'navSettings', help: 'navHelp',
   };
 
   panels.forEach(p => {
-    document.getElementById(`panel${capitalize(p)}`).classList.remove('active');
+    const panelEl = document.getElementById(`panel${capitalize(p)}`);
+    if (panelEl) panelEl.classList.remove('active');
     const nb = document.getElementById(navBtns[p]);
     if (nb) { nb.classList.remove('active'); nb.removeAttribute('aria-current'); }
   });
 
-  document.getElementById(`panel${capitalize(name)}`).classList.add('active');
+  const targetPanel = document.getElementById(`panel${capitalize(name)}`);
+  if (targetPanel) targetPanel.classList.add('active');
   const activeBtn = document.getElementById(navBtns[name]);
   if (activeBtn) { activeBtn.classList.add('active'); activeBtn.setAttribute('aria-current', 'page'); }
 
   // Lazy-load panel data
-  if (name === 'history') { refreshOutputs(); refreshLog(); }
+  if (name === 'history') { loadHistory(); refreshLog(); }
   if (name === 'settings') loadSettings();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IA Regeneration, Thumbnails & Playlists
+// ─────────────────────────────────────────────────────────────────────────────
+
+function promptRegenerate(field) {
+  const wrap = document.getElementById(`regen_${field}`);
+  if (!wrap) return;
+  wrap.style.display = wrap.style.display === 'none' ? 'flex' : 'none';
+  if (wrap.style.display === 'flex') {
+    const inst = document.getElementById(`inst_${field}`);
+    if (inst) inst.focus();
+  }
+}
+
+async function doRegenerate(field) {
+  const instructions = document.getElementById(`inst_${field}`).value.trim();
+  if (!instructions) { toast('Escribe instrucciones primero.', 'warn'); return; }
+  const btn = document.getElementById(`btnRegen_${field}`);
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  let currentVal = '';
+  if (field === 'titulo') currentVal = document.getElementById('editTitle').value;
+  else if (field === 'descripcion') currentVal = document.getElementById('editDescription').value;
+  else if (field === 'tags') currentVal = document.getElementById('editTags').value;
+
+  try {
+    const res = await fetch('/api/regenerate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        field,
+        current_value: currentVal,
+        instructions,
+        context: state.lastOutputs
+          ? `${state.lastOutputs.titulo || ''}\n${state.lastOutputs.descripcion || ''}`
+          : ''
+      })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (field === 'titulo') { document.getElementById('editTitle').value = data.new_value; updateTitleCount(); }
+      else if (field === 'descripcion') { document.getElementById('editDescription').value = data.new_value; updateDescCount(); }
+      else if (field === 'tags') { 
+        document.getElementById('editTags').value = data.new_value;
+        if (typeof setTagsFromString === 'function') setTagsFromString(data.new_value);
+      }
+      document.getElementById(`inst_${field}`).value = '';
+      document.getElementById(`regen_${field}`).style.display = 'none';
+      toast(`✅ ${field} regenerado con éxito.`, 'success');
+    } else {
+      toast('Error al regenerar: ' + (data.detail || ''), 'error');
+    }
+  } catch (e) {
+    toast(`Error: ${e.message}`, 'error');
+  }
+  btn.disabled = false;
+  btn.textContent = 'Aplicar';
+}
+
+async function doRegenerateThumbnail() {
+  const instructions = document.getElementById('inst_thumbnail').value.trim();
+  if (!instructions) { toast('Escribe instrucciones para la miniatura.', 'warn'); return; }
+  const btn = document.getElementById('btnRegen_thumbnail');
+  btn.disabled = true;
+  btn.textContent = '...';
+  toast('Generando miniatura con IA... puede demorar unos segundos.', 'info', 8000);
+
+  const outFilename = state.lastOutputs && state.lastOutputs.video
+    ? state.lastOutputs.video.replace('.mp4', '_thumb_regen.jpg')
+    : `thumb_regen_${Date.now()}.jpg`;
+
+  try {
+    const res = await fetch('/api/regenerate-thumbnail', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: instructions, output_filename: outFilename })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('currentThumbnailFile').value = data.thumbnail_file;
+      const thumbImg = document.getElementById('reviewThumbnail');
+      thumbImg.src = `/api/outputs/${encodeURIComponent(data.thumbnail_file)}?t=` + Date.now();
+      thumbImg.style.display = 'inline-block';
+      document.getElementById('thumbnailWrapper').style.display = 'block';
+      document.getElementById('inst_thumbnail').value = '';
+      document.getElementById('regen_thumbnail').style.display = 'none';
+      toast('✅ Miniatura regenerada con éxito.', 'success');
+    } else {
+      toast('No se pudo generar la miniatura: ' + (data.detail || ''), 'error');
+    }
+  } catch (e) {
+    toast(`Error: ${e.message}`, 'error');
+  }
+  btn.disabled = false;
+  btn.textContent = 'Aplicar';
+}
+
+function toggleThumbnailVisibility() {
+  const use_thumb = document.getElementById('toggleUseThumbnail').checked;
+  const wrap = document.getElementById('thumbnailWrapper');
+  wrap.style.opacity = use_thumb ? '1' : '0.3';
+  ['btnApplyLogo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !use_thumb;
+  });
+}
+
+async function handleUploadThumbnail(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const res = await fetch('/api/upload-thumbnail', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('currentThumbnailFile').value = data.thumbnail_file;
+      const thumbImg = document.getElementById('reviewThumbnail');
+      thumbImg.src = `/api/outputs/${encodeURIComponent(data.thumbnail_file)}?t=` + Date.now();
+      thumbImg.style.display = 'inline-block';
+      document.getElementById('thumbnailWrapper').style.display = 'block';
+      toast('✅ Miniatura cargada exitosamente.', 'success');
+    }
+  } catch (e) {
+    toast('Error al subir miniatura: ' + e.message, 'error');
+  }
+}
+
+async function applyLogoToThumbnail() {
+  const current = document.getElementById('currentThumbnailFile').value;
+  if (!current) { toast('No hay miniatura cargada. Generá o subí una primero.', 'warn'); return; }
+  const btn = document.getElementById('btnApplyLogo');
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const res = await fetch('/api/apply-logo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ thumbnail_file: current })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('currentThumbnailFile').value = data.new_thumbnail;
+      const thumbImg = document.getElementById('reviewThumbnail');
+      thumbImg.src = `/api/outputs/${encodeURIComponent(data.new_thumbnail)}?t=` + Date.now();
+      toast('✨ Logo de Pronectis aplicado!', 'success');
+    } else {
+      toast('Error al aplicar el logo.', 'error');
+    }
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+  btn.disabled = false;
+  btn.textContent = '✨ Agregar Logo';
+}
+
+async function loadPlaylists() {
+  try {
+    const res = await fetch('/api/playlists');
+    const data = await res.json();
+    if (data.playlists) {
+      const select = document.getElementById('playlistSelect');
+      if (!select) return;
+      select.innerHTML = '<option value="">(Ninguna)</option>';
+      data.playlists.forEach(pl => {
+        const opt = document.createElement('option');
+        opt.value = pl.id;
+        opt.textContent = pl.title;
+        select.appendChild(opt);
+      });
+    }
+  } catch (e) {
+    console.warn('Error cargando playlists:', e);
+  }
+}
+
+function openImageModal(src) {
+  if (!src) return;
+  document.getElementById('imageModalImg').src = src;
+  document.getElementById('imageModal').classList.add('open');
+}
+
+function closeImageModal() {
+  document.getElementById('imageModal').classList.remove('open');
 }
 
 function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
@@ -977,19 +1407,6 @@ function showFieldError(fieldId, msg) {
     field.style.borderColor = '';
     field.style.boxShadow   = '';
   }, 3000);
-}
-
-function updateTitleCount() {
-  const len  = document.getElementById('editTitle').value.length;
-  const el   = document.getElementById('titleCharCount');
-  el.textContent = `${len} / 100 caracteres`;
-  el.style.color = len > 100 ? 'var(--red)' : len > 80 ? 'var(--yellow)' : '';
-}
-
-function updateDescCount() {
-  const len = document.getElementById('editDescription').value.length;
-  const el  = document.getElementById('descCharCount');
-  el.textContent = `${len.toLocaleString('es-AR')} caracteres`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

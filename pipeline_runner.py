@@ -95,8 +95,19 @@ class PipelineRunner:
         self._prompt_response = action
         self._prompt_event.set()
 
-    def start(self, *, url: str, out_filename: str, trim_start: float,
-              trim_end: float, auto_upload: bool, outputs_dir: str) -> bool:
+    def abort(self, reason: str = "Cancelado"):
+        """Abort the pipeline mid-run if possible."""
+        self.emit("log", msg=f"⚠️ Petición de cancelación recibida: {reason}")
+        if self.status == "waiting_confirmation":
+            self.respond_to_prompt("cancel")
+        else:
+            self.status = "aborting"
+            self.emit("pipeline_aborted", reason=reason)
+            # Raise exception in main thread if possible, or we let the next step check status.
+
+
+    def start(self, *, url: str, project_name: str, trim_start: float,
+              trim_end: float, video_format: str, extra_context: str, auto_upload: bool, outputs_dir: str) -> bool:
         """Launch the pipeline in a background daemon thread."""
         if self.status in ("running", "waiting_confirmation"):
             return False
@@ -105,7 +116,7 @@ class PipelineRunner:
         self.last_outputs = {}
         self._thread = threading.Thread(
             target=self._thread_main,
-            args=(url, out_filename, trim_start, trim_end, auto_upload, outputs_dir),
+            args=(url, project_name, trim_start, trim_end, video_format, extra_context, auto_upload, outputs_dir),
             daemon=True,
         )
         self._thread.start()
@@ -236,7 +247,9 @@ class PipelineRunner:
         # ───────────────────────────────────────────────────────────
 
         with yt_dlp.YoutubeDL(opts) as ydl:
-            ydl.download([url])
+            ret_code = ydl.download([url])
+            if ret_code != 0:
+                raise Exception("yt-dlp reportó un error durante la descarga del video.")
 
         # yt-dlp sometimes appends extra chars; find the actual file
         if not os.path.exists(temp_path):
@@ -246,8 +259,12 @@ class PipelineRunner:
                 if f.startswith(os.path.basename(base)) and f.endswith(".mp4"):
                     temp_path = os.path.join(parent, f)
                     break
+                    
         if not os.path.exists(temp_path):
             raise FileNotFoundError("No se pudo localizar el video descargado en disco.")
+            
+        if os.path.getsize(temp_path) < 1024:
+            raise Exception("El archivo descargado está corrupto o vacío (menos de 1KB).")
 
         self.emit("log", msg="→ Descarga completada exitosamente.")
         return temp_path
@@ -273,14 +290,15 @@ class PipelineRunner:
         self.emit("log", msg="→ Recorte finalizado correctamente.")
         return output_path
 
-    def _step_ai_assets(self, url: str, out_desc: str, out_title: str):
+    def _step_ai_assets(self, url: str, out_desc: str, out_title: str, extra_context: str):
         self.emit("log", msg="[2/5] Extrayendo contexto y transcripción del video con yt-dlp...")
         context = automate.get_video_context(url)
         self.emit("log", msg="→ Contexto obtenido. Conectando con Gemini AI para generar activos...")
-        assets = automate.generate_marketing_assets(context)
+        assets = automate.generate_marketing_assets(context, extra_context=extra_context)
 
         desc = assets.get("descripcion", "").strip()
         title = assets.get("titulo", "").strip()
+        tags = assets.get("tags", "")
 
         if desc:
             with open(out_desc, "w", encoding="utf-8") as f:
@@ -298,7 +316,17 @@ class PipelineRunner:
         else:
             automate.log_error("Título IA", "Campo 'titulo' vino vacío.")
 
-        return title, desc
+        return title, desc, tags
+
+    def _step_thumbnail(self, prompt_text: str, output_path: str) -> Optional[str]:
+        self.emit("log", msg="[AI] Generando miniatura con Google Imagen 3...")
+        thumb_path = automate.generate_thumbnail_ai(prompt_text, output_path)
+        if thumb_path:
+            automate.SUCCESS_LOG.append(f"[✓] Miniatura generada: {os.path.basename(thumb_path)}")
+            self.emit("log", msg="→ Miniatura IA generada con éxito.")
+        return thumb_path
+
+
 
     def _step_concat(self, clips: List[str], out_path: str):
         self.emit("log", msg=f"[3/5] Procesando y concatenando {len(clips)} videos con FFmpeg...")
@@ -342,6 +370,42 @@ class PipelineRunner:
         self._run_ffmpeg(cmd, total_duration=total_dur)
         automate.SUCCESS_LOG.append(f"[✓] Fusión exitosa: {os.path.basename(out_path)}")
         self.emit("log", msg="→ Fusión multimedia completada exitosamente.")
+
+    def _step_short_format(self, in_file: str, out_file: str, mode: str):
+        """Formatea un video 16:9 a 9:16 (Short) usando crop o pad con blur."""
+        self.emit("log", msg=f"[FFmpeg] Formateando para Short (modo: {mode})...")
+        
+        info = automate.get_video_info(in_file)
+        if not info:
+            raise ValueError(f"No se pudo leer info de {in_file}")
+            
+        dur = info["duration"]
+        
+        # Base config
+        cmd = ["ffmpeg", "-y", "-i", in_file]
+        
+        if mode == "crop":
+            # Crop center 9:16
+            cmd += ["-vf", "crop=ih*(9/16):ih"]
+        elif mode == "pad":
+            # Blur background pad
+            cmd += [
+                "-filter_complex",
+                "[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
+                "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,boxblur=20:20,crop=1080:1920[bg];"
+                "[bg][fg]overlay=(W-w)/2:(H-h)/2"
+            ]
+            
+        cmd += [
+            "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+            "-c:a", "aac", "-b:a", "192k",
+            out_file
+        ]
+        
+        self._run_ffmpeg(cmd, total_duration=dur)
+        automate.SUCCESS_LOG.append(f"[✓] Formato Short ({mode}) aplicado.")
+        self.emit("log", msg="→ Formato Short completado.")
+
 
     def _step_upload(self, video_file: str, title: str, description: str,
                      privacy: str = "private") -> Optional[str]:
@@ -465,8 +529,24 @@ class PipelineRunner:
 
     # ── Thread entry point ────────────────────────────────────────────────────
 
-    def _thread_main(self, url: str, out_filename: str, trim_start: float,
-                     trim_end: float, auto_upload: bool, outputs_dir: str):
+    def _prune_old_projects(self, outputs_dir: str, keep: int = 5):
+        """Elimina las carpetas de proyecto más antiguas, dejando solo las últimas `keep`."""
+        try:
+            entries = [
+                e for e in os.scandir(outputs_dir)
+                if e.is_dir() and os.path.exists(os.path.join(e.path, "metadata.json"))
+            ]
+            entries.sort(key=lambda e: e.stat().st_mtime)
+            to_delete = entries[:-keep] if len(entries) > keep else []
+            for entry in to_delete:
+                import shutil
+                shutil.rmtree(entry.path, ignore_errors=True)
+                self.emit("log", msg=f"[Limpieza] Proyecto antiguo eliminado: {entry.name}")
+        except Exception as e:
+            self.emit("log", msg=f"⚠️ No se pudo podar proyectos antiguos: {e}")
+
+    def _thread_main(self, url: str, project_name: str, trim_start: float,
+                     trim_end: float, video_format: str, extra_context: str, auto_upload: bool, outputs_dir: str):
         # Redirect stdout so all print() calls go to the queue
         old_stdout = sys.stdout
         sys.stdout = StreamToQueue(self.log_queue)
@@ -486,15 +566,51 @@ class PipelineRunner:
 
             os.makedirs(outputs_dir, exist_ok=True)
 
-            out_path    = os.path.join(outputs_dir, out_filename)
-            base        = os.path.splitext(out_filename)[0]
-            out_desc    = os.path.join(outputs_dir, f"{base}_descripcion.txt")
-            out_title_f = os.path.join(outputs_dir, f"{base}_titulo.txt")
-            temp_yt     = os.path.join(outputs_dir, "temp_downloaded_yt_video.mp4")
-            temp_trim   = os.path.join(outputs_dir, "temp_trimmed_yt_video.mp4")
+            # ── Create per-project directory ──────────────────────────────────
+            import datetime as _dt
+            import re
+            ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+            if not project_name:
+                project_name = f"proyecto_{ts}"
+            else:
+                project_name = re.sub(r'[^A-Za-z0-9_-]', '_', project_name) + f"_{ts}"
+            project_dir  = os.path.join(outputs_dir, project_name)
+            os.makedirs(project_dir, exist_ok=True)
+            self.emit("log", msg=f"📁 Proyecto creado: {project_name}")
+
+            # ── Save initial metadata immediately so the project appears in history even on failure ──
+            import json as _json
+            meta_path = os.path.join(project_dir, "metadata.json")
+            _initial_meta = {
+                "project_name": project_name,
+                "project_dir":  project_name,
+                "source_url":   url,
+                "created_at":   ts,
+                "status":       "in_progress",
+                "video":        None,
+                "titulo":       None,
+                "descripcion":  None,
+                "tags":         None,
+                "thumbnail":    None,
+                "youtube_id":   None,
+                "youtube_url":  None,
+            }
+            with open(meta_path, "w", encoding="utf-8") as f:
+                _json.dump(_initial_meta, f, ensure_ascii=False, indent=2)
+
+            # Prune old projects (keep only last 5)
+            self._prune_old_projects(outputs_dir, keep=5)
+
+            out_filename = "video.mp4"
+            out_path    = os.path.join(project_dir, out_filename)
+            out_desc    = os.path.join(project_dir, "descripcion.txt")
+            out_title_f = os.path.join(project_dir, "titulo.txt")
+            out_tags_f  = os.path.join(project_dir, "tags.txt")
+            temp_yt     = os.path.join(project_dir, "temp_downloaded.mp4")
+            temp_trim   = os.path.join(project_dir, "temp_trimmed.mp4")
 
             automate.TEMP_FILES.extend([temp_yt, temp_trim])
-            automate.TRACKED_OUTPUTS.extend([out_path, out_desc, out_title_f])
+            # Note: thumbnail is NOT added to TEMP_FILES to avoid accidental deletion
 
             intro = os.path.join(SCRIPT_DIR, "Intro Pronectis.mp4")
             outro = os.path.join(SCRIPT_DIR, "Outro Pronectis.mp4")
@@ -531,9 +647,11 @@ class PipelineRunner:
             # ── STEP 2: AI content ────────────────────────────────────────────
             self.current_step = 2
             self.emit("step", step=2, name="Gemini IA")
-            titulo_ia, descripcion_ia = "", ""
+            titulo_ia, descripcion_ia, tags_ia = "", "", ""
             try:
-                titulo_ia, descripcion_ia = self._step_ai_assets(url, out_desc, out_title_f)
+                titulo_ia, descripcion_ia, tags_ia = self._step_ai_assets(url, out_desc, out_title_f, extra_context)
+                if "short" in video_format and "#shorts" not in tags_ia.lower():
+                    tags_ia += ", Shorts"
             except PipelineAbortedError:
                 raise
             except Exception as e:
@@ -541,16 +659,46 @@ class PipelineRunner:
                     "Generación de Activos de Marketing (Gemini IA)", str(e)
                 )
 
-            # ── STEP 3: Concatenate ───────────────────────────────────────────
+            # ── STEP 2.5: Thumbnail ───────────────────────────────────────────
+            thumb_path = os.path.join(project_dir, "thumbnail.jpg")  # always in project dir
+            try:
+                if video_format == "normal":
+                    prompt_img = (
+                        f"Minimalista, tecnología corporativa, informativo. "
+                        f"Tema: {titulo_ia}. "
+                        "Estilo: Pronectis, empresa de software y tecnología, paleta azul oscuro y blanco, "
+                        "limpio, profesional, sin texto sobreimpreso, moderno, alta calidad."
+                    )
+                    gen_thumb = self._step_thumbnail(prompt_img, thumb_path)
+                    if not gen_thumb:
+                        thumb_path = None
+                else:
+                    thumb_path = None
+            except Exception as e:
+                self.emit("log", msg=f"⚠️ Error miniatura: {e}")
+                thumb_path = None
+
+            # ── STEP 3: Concatenate or Format ──────────────────────────────────
             self.current_step = 3
             self.emit("step", step=3, name="Fusión FFmpeg")
             if to_merge:
                 try:
-                    self._step_concat([intro, to_merge, outro], out_path)
+                    if video_format == "normal":
+                        self._step_concat([intro, to_merge, outro], out_path)
+                    elif video_format == "short_direct":
+                        import shutil
+                        shutil.copy2(to_merge, out_path)
+                        automate.SUCCESS_LOG.append(f"[✓] Short copiado directamente: {os.path.basename(out_path)}")
+                        self.emit("log", msg="→ Short conservado en su formato original.")
+                    elif video_format == "short_crop":
+                        self._step_short_format(to_merge, out_path, "crop")
+                    elif video_format == "short_pad":
+                        self._step_short_format(to_merge, out_path, "pad")
+
                 except PipelineAbortedError:
                     raise
                 except Exception as e:
-                    self._ask_to_continue_web("Fusión multimedia (FFmpeg)", str(e))
+                    self._ask_to_continue_web("Procesamiento de Video (FFmpeg)", str(e))
 
             # ── STEP 4: Upload ────────────────────────────────────────────────
             self.current_step = 4
@@ -562,7 +710,15 @@ class PipelineRunner:
                     video_id = self._step_upload(
                         out_path, titulo_ia, descripcion_ia, "private"
                     )
-                    if not video_id:
+                    if video_id:
+                        # Upload thumbnail if available
+                        if thumb_path and os.path.exists(thumb_path):
+                            try:
+                                automate.set_youtube_thumbnail(video_id, thumb_path)
+                                self.emit("log", msg="[✓] Miniatura asignada exitosamente al video.")
+                            except Exception as th_err:
+                                self.emit("log", msg=f"⚠️ No se pudo asignar la miniatura automáticamente: {th_err}")
+                    else:
                         automate.log_error(
                             "Subida YouTube", "La API no retornó ID de video."
                         )
@@ -594,11 +750,11 @@ class PipelineRunner:
                         pass
 
             # Write execution log
-            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ts_log = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             log_path = os.path.join(SCRIPT_DIR, "pipeline_execution.log")
             with open(log_path, "a", encoding="utf-8") as lf:
-                lf.write(f"\n{'=' * 50}\n EJECUCIÓN - {ts}\n{'=' * 50}\n")
-                lf.write(f"URL: {url}\nArchivo: {out_filename}\n\n")
+                lf.write(f"\n{'=' * 50}\n EJECUCIÓN - {ts_log}\n{'=' * 50}\n")
+                lf.write(f"URL: {url}\nProyecto: {project_name}\n\n")
                 lf.write("[+] COMPLETADOS:\n")
                 for s in (automate.SUCCESS_LOG or ["  Ninguno."]):
                     lf.write(f"  {s}\n")
@@ -608,16 +764,34 @@ class PipelineRunner:
                 lf.write("-" * 50 + "\n")
             self.emit("log", msg="→ Log de auditoría guardado en pipeline_execution.log")
 
+            # Save tags to file
+            if tags_ia:
+                with open(out_tags_f, "w", encoding="utf-8") as f:
+                    f.write(tags_ia)
+
             # Build output summary
+            thumb_relative = f"{project_name}/thumbnail.jpg" if thumb_path and os.path.exists(thumb_path) else None
             self.last_outputs = {
-                "video":       out_filename if os.path.exists(out_path) else None,
-                "titulo":      titulo_ia,
-                "descripcion": descripcion_ia,
-                "titulo_file": f"{base}_titulo.txt" if os.path.exists(out_title_f) else None,
-                "desc_file":   f"{base}_descripcion.txt" if os.path.exists(out_desc) else None,
-                "youtube_id":  video_id,
-                "youtube_url": f"https://youtu.be/{video_id}" if video_id else None,
+                "project_name": project_name,
+                "project_dir":  project_name,
+                "source_url":   url,
+                "created_at":   ts,
+                "status":       "done",
+                "video":        f"{project_name}/video.mp4" if os.path.exists(out_path) else None,
+                "titulo":       titulo_ia,
+                "descripcion":  descripcion_ia,
+                "tags":         tags_ia,
+                "thumbnail":    thumb_relative,
+                "titulo_file":  f"{project_name}/titulo.txt" if os.path.exists(out_title_f) else None,
+                "desc_file":    f"{project_name}/descripcion.txt" if os.path.exists(out_desc) else None,
+                "video_format": video_format,
+                "youtube_id":   video_id,
+                "youtube_url":  f"https://youtu.be/{video_id}" if video_id else None,
             }
+
+            # Update metadata.json with final state
+            with open(meta_path, "w", encoding="utf-8") as f:
+                _json.dump(self.last_outputs, f, ensure_ascii=False, indent=2)
             self.emit(
                 "pipeline_done",
                 outputs=self.last_outputs,
@@ -628,9 +802,28 @@ class PipelineRunner:
         except PipelineAbortedError as ex:
             self.emit("pipeline_aborted", reason=str(ex))
             self.status = "idle"
+            # Delete the project directory completely if aborted
+            try:
+                if 'project_dir' in dir() or 'project_dir' in locals():
+                    if os.path.exists(project_dir):
+                        import shutil
+                        shutil.rmtree(project_dir, ignore_errors=True)
+                        self.emit("log", msg=f"🗑️ Proyecto eliminado tras cancelación.")
+            except Exception:
+                pass
         except Exception as ex:
             self.emit("pipeline_error", error=str(ex))
             self.status = "error"
+            # Try to mark metadata as error if project dir was already created
+            try:
+                if os.path.exists(meta_path):
+                    _existing = _json.loads(open(meta_path, encoding="utf-8").read())
+                    _existing["status"] = "error"
+                    _existing["error_detail"] = str(ex)
+                    with open(meta_path, "w", encoding="utf-8") as f:
+                        _json.dump(_existing, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
         finally:
             sys.stdout = old_stdout
             automate.ask_to_continue = old_ask

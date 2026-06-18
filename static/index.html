@@ -37,6 +37,10 @@
       <span class="nav-icon">⚙️</span>
       <span class="nav-label">Ajustes</span>
     </button>
+    <button class="nav-btn" id="navHelp" onclick="showPanel('help')">
+      <span class="nav-icon">❓</span>
+      <span class="nav-label">Ayuda</span>
+    </button>
   </nav>
 
   <div class="header-status" id="headerStatus">
@@ -76,29 +80,44 @@
           >
           <span class="input-hint" id="urlHint"></span>
         </div>
-
-        <div class="form-group">
-          <label for="inputOut">Nombre del archivo de salida</label>
+        <div class="form-group mt-12">
+          <label for="inputProjectName">Nombre del Proyecto <span class="badge" style="background:var(--bg-2); color:var(--text-2); font-weight:normal; padding:2px 6px; font-size:10px;">Opcional</span></label>
           <input
             type="text"
-            id="inputOut"
-            placeholder="final_output.mp4"
-            value="final_output.mp4"
+            id="inputProjectName"
+            placeholder="Ej: tutorial_python"
+            autocomplete="off"
+            spellcheck="false"
           >
-          <span class="input-hint">Se guardará en la carpeta <code>outputs/</code></span>
+          <span class="input-hint">Si lo dejás en blanco, se generará uno automático (ej: proyecto_20260618_143000)</span>
         </div>
-      </div>
 
       <div class="form-grid form-grid-2 mt-12">
+        <div class="form-group" style="grid-column: span 2;">
+          <label for="selectVideoFormat">Formato del Video</label>
+          <select id="selectVideoFormat">
+            <option value="normal" selected>Normal (Horizontal + Intro/Outro)</option>
+            <option value="short_crop">Short - Recortar al Centro (9:16)</option>
+            <option value="short_pad">Short - Adaptar Entero (Blur, 9:16)</option>
+            <option value="short_direct">Short - Ya es Vertical (Sin cambios)</option>
+          </select>
+          <span class="input-hint">Los Shorts ignoran la Intro y la Outro corporativas.</span>
+        </div>
+        
+        <div class="form-group" style="grid-column: span 2;">
+          <label for="inputExtraContext">Contexto Adicional para IA (opcional)</label>
+          <textarea id="inputExtraContext" rows="2" placeholder="Ej: Es un video tutorial sobre..."></textarea>
+          <span class="input-hint">Información extra para que la IA genere mejor el título, la descripción y tags.</span>
+        </div>
         <div class="form-group">
           <label for="inputTrimStart">✂️ Recortar inicio (segundos)</label>
           <input type="number" id="inputTrimStart" value="0" min="0" step="0.1" placeholder="0">
-          <span class="input-hint">Segundos a eliminar del inicio del video descargado</span>
+          <span class="input-hint">Segundos a eliminar del inicio del video</span>
         </div>
         <div class="form-group">
           <label for="inputTrimEnd">✂️ Recortar fin (segundos)</label>
           <input type="number" id="inputTrimEnd" value="0" min="0" step="0.1" placeholder="0">
-          <span class="input-hint">Segundos a eliminar del final del video descargado</span>
+          <span class="input-hint">Segundos a eliminar del final del video</span>
         </div>
       </div>
 
@@ -206,7 +225,10 @@
       <div class="card-header">
         <span class="card-icon">💻</span>
         <span class="card-title">Consola de Logs</span>
-        <button class="console-clear ml-auto" onclick="clearConsole()">Limpiar</button>
+        <div class="flex gap-8 ml-auto align-center">
+          <button class="btn btn-ghost btn-sm" onclick="cancelPipeline()" id="btnCancelPipeline">🛑 Cancelar Pipeline</button>
+          <button class="console-clear" onclick="clearConsole()">Limpiar</button>
+        </div>
       </div>
       <div class="console-wrap">
         <div class="console-header">
@@ -233,6 +255,13 @@
 
     <div class="section-title">📋 Revisión y Publicación</div>
     <p class="section-subtitle">Revisá el video, editá el título y descripción generados por IA, y publicá en YouTube.</p>
+    <div class="project-name-banner" id="projectNameBanner" style="display:none; justify-content:space-between; align-items:center;">
+      <div>
+        <span class="project-name-icon">📁</span>
+        <span>Proyecto: <strong id="projectNameLabel">—</strong></span>
+      </div>
+      <a id="projectYoutubeLink" href="#" target="_blank" rel="noopener" style="display:none; color:#ff4444; font-size:12px; font-weight:600; text-decoration:none; background:#ff444420; border:1px solid #ff444440; border-radius:10px; padding:4px 10px;">▶ Ver en YouTube</a>
+    </div>
 
     <!-- Empty state when no output available -->
     <div class="card" id="reviewEmpty">
@@ -276,21 +305,91 @@
       <div class="card mt-16">
         <div class="card-header">
           <span class="card-icon">🤖</span>
-          <span class="card-title">Contenido Generado por Gemini IA</span>
-          <span class="chip chip-blue ml-auto">Editable</span>
+          <span class="card-title">Contenido Generado por IA</span>
         </div>
 
-        <div class="form-group">
-          <label for="editTitle">Título del Video</label>
-          <input type="text" id="editTitle" placeholder="Título generado por Gemini...">
-          <span class="input-hint" id="titleCharCount">0 / 100 caracteres</span>
+        <div class="form-group mt-12">
+          <label>Título</label>
+          <div class="flex gap-8 align-center">
+            <input type="text" id="editTitle" style="flex:1">
+            <button class="btn btn-regen btn-sm" onclick="promptRegenerate('titulo')">
+              <span class="icon">✨</span> Regenerar
+            </button>
+          </div>
+          <div style="font-size:11px; color:var(--text-3); text-align:right; margin-top:4px;" id="editTitleCount">0/100</div>
+          <div class="regen-wrap" id="regen_titulo" style="display:none; margin-top:8px;">
+            <input type="text" id="inst_titulo" placeholder="Instrucciones: Hazlo más clickbait..." style="font-size:0.9em; padding:6px; flex:1">
+            <button class="btn btn-primary btn-sm ml-8" onclick="doRegenerate('titulo')" id="btnRegen_titulo">Aplicar</button>
+          </div>
         </div>
 
         <div class="form-group mt-16">
-          <label for="editDescription">Descripción del Video</label>
-          <textarea id="editDescription" style="height:280px"
-                    placeholder="Descripción generada por Gemini..."></textarea>
-          <span class="input-hint" id="descCharCount">0 caracteres</span>
+          <label>Descripción</label>
+          <div class="flex gap-8">
+            <textarea id="editDescription" style="height:150px; flex:1"></textarea>
+            <button class="btn btn-regen btn-sm" onclick="promptRegenerate('descripcion')" style="height:fit-content; margin-top:4px;">
+              <span class="icon">✨</span> Regenerar
+            </button>
+          </div>
+          <div style="font-size:11px; color:var(--text-3); text-align:right; margin-top:4px;" id="editDescCount">0/5000</div>
+          <div class="regen-wrap" id="regen_descripcion" style="display:none; margin-top:8px;">
+            <input type="text" id="inst_descripcion" placeholder="Instrucciones: Más detallado..." style="font-size:0.9em; padding:6px; flex:1">
+            <button class="btn btn-primary btn-sm ml-8" onclick="doRegenerate('descripcion')" id="btnRegen_descripcion">Aplicar</button>
+          </div>
+        </div>
+        
+        <div class="form-group mt-16">
+          <label>Etiquetas
+            <span style="font-size:11px; color:var(--text-3); font-weight:400; margin-left:6px;">Escribí y presioná Enter o coma para agregar</span>
+          </label>
+          <div class="tags-chip-container" id="tagsChipContainer" onclick="document.getElementById('tagsInput').focus()">
+            <div id="tagsChipList"></div>
+            <input type="text" id="tagsInput" class="tags-chip-input" placeholder="Escribí una etiqueta...">
+          </div>
+          <input type="hidden" id="editTags">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+            <span class="input-hint" id="tagsCountHint">0 / 500 caracteres</span>
+            <button class="btn btn-regen btn-sm" onclick="promptRegenerate('tags')">
+              <span class="icon">✨</span> Regenerar
+            </button>
+          </div>
+          <div class="regen-wrap" id="regen_tags" style="display:none; margin-top:8px;">
+            <input type="text" id="inst_tags" placeholder="Instrucciones: Enfócate en SEO tech..." style="font-size:0.9em; padding:6px; flex:1">
+            <button class="btn btn-primary btn-sm ml-8" onclick="doRegenerate('tags')" id="btnRegen_tags">Aplicar</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Thumbnail -->
+      <div class="card mt-16" id="thumbnailCard">
+        <div class="card-header">
+          <span class="card-icon">🖼️</span>
+          <span class="card-title">Miniatura</span>
+          <label class="toggle ml-auto">
+            <span class="toggle-label" style="margin-right:8px; font-size:14px">Usar Miniatura</span>
+            <input type="checkbox" id="toggleUseThumbnail" checked onchange="toggleThumbnailVisibility()">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div id="thumbnailContainer">
+          <div id="thumbnailWrapper" style="display:none; text-align:center;">
+              <img id="reviewThumbnail" src="" style="max-height:300px; width:auto; max-width:100%; border-radius:8px; cursor:zoom-in; border:1px solid #ddd;" onclick="openImageModal(this.src)" alt="Miniatura generada">
+          </div>
+          <div class="flex gap-8 mt-12 justify-center align-center">
+            <button class="btn btn-regen btn-sm" onclick="promptRegenerate('thumbnail')" id="btnRegenThumbInit">
+              <span class="icon">✨</span> Generar con IA
+            </button>
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('manualThumbnailUpload').click()">
+              <span class="icon">📁</span> Subir Manual
+            </button>
+            <input type="file" id="manualThumbnailUpload" style="display:none" accept="image/png, image/jpeg" onchange="handleUploadThumbnail(event)">
+            <button class="btn btn-ghost btn-sm" onclick="applyLogoToThumbnail()" id="btnApplyLogo">✨ Agregar Logo</button>
+          </div>
+          <div class="regen-wrap" id="regen_thumbnail" style="display:none; margin-top:8px;">
+            <input type="text" id="inst_thumbnail" placeholder="Instrucciones: Un paisaje oscuro corporativo..." style="font-size:0.9em; padding:6px; flex:1">
+            <button class="btn btn-primary btn-sm ml-8" onclick="doRegenerateThumbnail()" id="btnRegen_thumbnail">Aplicar</button>
+          </div>
+          <input type="hidden" id="currentThumbnailFile" value="">
         </div>
       </div>
 
@@ -302,16 +401,40 @@
         </div>
 
         <div class="review-actions">
-          <div class="privacy-select-wrap">
+          <div class="form-group" style="flex:1">
             <label for="privacySelect">Privacidad:</label>
-            <select id="privacySelect">
-              <option value="private" selected>🔒 Privado</option>
-              <option value="unlisted">🔗 No listado</option>
-              <option value="public">🌐 Público</option>
+            <select id="privacySelect" disabled>
+              <option value="private" selected>🔒 Privado (Forzado)</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:1; margin-left:12px;">
+            <label for="categorySelect">Categoría:</label>
+              <select id="categorySelect">
+                <option value="1">Film & Animation (1)</option>
+                <option value="2">Autos & Vehicles (2)</option>
+                <option value="10">Music (10)</option>
+                <option value="15">Pets & Animals (15)</option>
+                <option value="17">Sports (17)</option>
+                <option value="19">Travel & Events (19)</option>
+                <option value="20">Gaming (20)</option>
+                <option value="22">People & Blogs (22)</option>
+                <option value="23">Comedy (23)</option>
+                <option value="24">Entertainment (24)</option>
+                <option value="25">News & Politics (25)</option>
+                <option value="26">Howto & Style (26)</option>
+                <option value="27">Education (27)</option>
+                <option value="28" selected>Ciencia y Tecnología (28)</option>
+                <option value="29">Nonprofits & Activism (29)</option>
+              </select>
+          </div>
+          <div class="form-group" style="flex:1; margin-left:12px;">
+            <label for="playlistSelect">Playlist:</label>
+            <select id="playlistSelect">
+              <option value="">(Ninguna)</option>
             </select>
           </div>
 
-          <button class="btn btn-success" id="btnUploadYT" onclick="uploadToYouTube()" style="margin-left:auto">
+          <button class="btn btn-success" id="btnUploadYT" onclick="uploadToYouTube()" style="margin-left:12px; height: fit-content; align-self: flex-end;">
             📤 Subir a YouTube
           </button>
         </div>
@@ -341,37 +464,38 @@
   </section>
 
   <!-- ─────────────────────── PANEL: HISTORY ───────────────────────────── -->
-  <section class="panel" id="panelHistory" aria-label="Panel de historial">
+  <section class="panel" id="panelHistory" aria-label="Panel de historial de proyectos">
 
-    <div class="section-title">📜 Historial de Ejecuciones</div>
-    <p class="section-subtitle">Registro de auditoría de todos los pipelines ejecutados.</p>
+    <div class="section-title">📁 Proyectos Anteriores</div>
+    <p class="section-subtitle">Últimos 5 proyectos generados. Hacé clic en uno para cargarlo en el panel de Revisión.</p>
 
-    <!-- Outputs file list -->
     <div class="card">
       <div class="card-header">
-        <span class="card-icon">📁</span>
-        <span class="card-title">Archivos Generados</span>
-        <button class="btn btn-ghost btn-sm ml-auto" onclick="refreshOutputs()">↻ Actualizar</button>
+        <span class="card-icon">🗂️</span>
+        <span class="card-title">Proyectos</span>
+        <button class="btn btn-ghost btn-sm ml-auto" onclick="loadHistory()">↻ Actualizar</button>
       </div>
-      <div id="outputsList" class="outputs-list">
+      <div id="historyList">
         <div class="empty-state">
           <div class="empty-icon">📂</div>
-          <div class="empty-text">Sin archivos generados todavía.</div>
+          <div class="empty-text">No hay proyectos anteriores todavía. Ejecutá un pipeline para crear el primero.</div>
         </div>
       </div>
     </div>
 
     <!-- Execution log -->
-    <div class="card mt-16">
-      <div class="card-header">
+    <details class="card mt-16" style="cursor: pointer;">
+      <summary class="card-header" style="list-style: none; outline: none;">
         <span class="card-icon">📋</span>
-        <span class="card-title">Log de Auditoría</span>
+        <span class="card-title">Log de Auditoría (Click para expandir)</span>
         <div class="flex gap-8 ml-auto">
-          <button class="btn btn-ghost btn-sm" onclick="refreshLog()">↻ Actualizar</button>
+          <button class="btn btn-ghost btn-sm" onclick="event.preventDefault(); refreshLog()">↻ Actualizar</button>
         </div>
+      </summary>
+      <div style="padding: 0 16px 16px;">
+        <pre id="logContent">Cargando historial...</pre>
       </div>
-      <pre id="logContent">Cargando historial...</pre>
-    </div>
+    </details>
 
   </section>
 
@@ -432,7 +556,46 @@
     </div>
   </section>
 
+  <!-- ─────────────────────── PANEL: HELP ────────────────────────────── -->
+  <section class="panel" id="panelHelp" aria-label="Panel de Ayuda">
+    <div class="section-title">❓ Centro de Ayuda e Instrucciones</div>
+    <p class="section-subtitle">Aprende a utilizar la herramienta para maximizar su potencial.</p>
+
+    <div class="card">
+      <h3>🚀 Cómo usar el Pipeline</h3>
+      <ul style="line-height:1.6; margin-left:20px;">
+        <li><strong>URL:</strong> Pega el enlace de YouTube del video original.</li>
+        <li><strong>Formato:</strong> Elige <i>Normal</i> para procesar un video largo añadiéndole Intro y Outro. Elige <i>Shorts</i> si el video es vertical (las intros se ignoran). Hay opciones para recortar al centro o rellenar con blur.</li>
+        <li><strong>Contexto Extra:</strong> Dale directivas a la IA sobre qué trata el video para que el título y descripción sean ultra precisos.</li>
+        <li><strong>Subida Automática:</strong> Déjalo desactivado si quieres revisar o modificar la miniatura, las descripciones y las listas de reproducción antes de que sea enviado a YouTube.</li>
+      </ul>
+      <hr style="margin:20px 0; border:0; border-top:1px solid var(--border);">
+      
+      <h3>🖼️ Gestión de Miniaturas</h3>
+      <ul style="line-height:1.6; margin-left:20px;">
+        <li>Gemini 2.0 Flash (o Imagen 3) intentará generar una miniatura basada en el contexto del video.</li>
+        <li>Si la miniatura no te gusta, haz clic en <b>"✨ Generar con IA"</b> y dile cómo quieres que sea (Ej: "Fondo oscuro con neón azul...").</li>
+        <li>Si prefieres subir la tuya propia, usa <b>"📁 Subir Manual"</b>.</li>
+        <li>Aplica el logo corporativo automáticamente con un solo clic pulsando <b>"✨ Agregar Logo"</b>.</li>
+        <li>Si no deseas que se suba ninguna miniatura, simplemente deshabilita el interruptor <b>"Usar Miniatura"</b> (los Shorts la ocultan por defecto).</li>
+      </ul>
+      <hr style="margin:20px 0; border:0; border-top:1px solid var(--border);">
+      
+      <h3>🛑 Controles Especiales</h3>
+      <ul style="line-height:1.6; margin-left:20px;">
+        <li><strong>Cancelar Pipeline:</strong> Puedes interrumpir un pipeline en curso desde el botón <b>"🛑 Cancelar Pipeline"</b> ubicado sobre la consola.</li>
+      </ul>
+    </div>
+  </section>
+
 </main>
+
+<!-- ═══════════════════════════ IMAGE MODAL ══════════════════════════════════ -->
+<div class="modal-overlay" id="imageModal" role="dialog" aria-modal="true" onclick="closeImageModal()">
+  <div class="modal" style="max-width: 90vw; background: transparent; box-shadow: none; display:flex; justify-content:center; align-items:center;">
+    <img id="imageModalImg" src="" style="max-width:100%; max-height:90vh; border-radius:12px; cursor:zoom-out;">
+  </div>
+</div>
 
 <!-- ═══════════════════════════ ERROR MODAL ══════════════════════════════════ -->
 <div class="modal-overlay" id="errorModal" role="dialog"
@@ -485,6 +648,6 @@
 <!-- ═══════════════════════════ TOAST CONTAINER ══════════════════════════════ -->
 <div id="toastContainer" role="status" aria-live="polite"></div>
 
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=3"></script>
 </body>
 </html>

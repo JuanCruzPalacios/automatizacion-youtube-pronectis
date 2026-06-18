@@ -139,11 +139,12 @@ async def _inactivity_monitor():
                 print(f"[{datetime.datetime.now()}] Apagado cancelado por el usuario.")
                 continue
                 
-            print(f"[{datetime.datetime.now()}] Tiempo agotado o apagado confirmado. Apagando VM...")
+            print(f"[{datetime.datetime.now()}] Tiempo agotado o apagado confirmado. Apagando máquina...")
             if os.name == 'nt':
                 subprocess.run(["shutdown", "/s", "/t", "5"])
             else:
-                subprocess.run(["sudo", "shutdown", "-h", "now"])
+                # Intenta apagar linux sin sudo si es root, o usando systemctl
+                os.system("shutdown -h now || systemctl poweroff || sudo shutdown -h now")
             break # Salimos del loop porque se está apagando
 
 @app.on_event("startup")
@@ -158,11 +159,15 @@ async def _startup():
 # Pydantic models
 # ─────────────────────────────────────────────────────────────────────────────
 
+from fastapi import UploadFile, File
+
 class RunRequest(BaseModel):
     url: str
-    out_filename: str = "final_output.mp4"
+    project_name: str = ""
     trim_start: float = 0.0
     trim_end: float = 0.0
+    video_format: str = "normal"
+    extra_context: str = ""
     auto_upload: bool = False
 
 
@@ -174,7 +179,24 @@ class UploadRequest(BaseModel):
     video_filename: str
     title: str
     description: str
+    category_id: str = "28"
+    tags: str = ""
+    playlist_id: str = ""
+    thumbnail_file: str = ""
     privacy_status: str = "private"
+
+class RegenerateRequest(BaseModel):
+    field: str
+    current_value: str
+    instructions: str
+    context: str
+
+class ApplyLogoRequest(BaseModel):
+    thumbnail_file: str
+
+class RegenThumbnailRequest(BaseModel):
+    prompt: str
+    output_filename: str
 
 
 class SettingsSave(BaseModel):
@@ -202,6 +224,18 @@ async def api_status():
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 
+@app.get("/api/logs")
+def get_logs():
+    import automate
+    return {"logs": automate.ERROR_LOG + automate.SUCCESS_LOG}
+
+@app.post("/api/cancel-pipeline")
+async def cancel_pipeline():
+    if runner.status in ("running", "waiting_confirmation"):
+        runner.abort("Cancelado por usuario.")
+        return {"status": "ok", "message": "Pipeline cancelado y limpiando temporales."}
+    return {"status": "ignored", "message": "Pipeline no está en ejecución."}
+
 @app.post("/api/run")
 async def run_pipeline(req: RunRequest):
     if runner.status in ("running", "waiting_confirmation"):
@@ -211,12 +245,6 @@ async def run_pipeline(req: RunRequest):
         raise HTTPException(400, "La URL no puede estar vacía.")
     if "youtube.com" not in req.url and "youtu.be" not in req.url:
         raise HTTPException(400, "La URL debe ser de YouTube (youtube.com o youtu.be).")
-    if not req.out_filename.strip():
-        raise HTTPException(400, "El nombre del archivo de salida no puede estar vacío.")
-
-    out_fn = req.out_filename.strip()
-    if not out_fn.lower().endswith(".mp4"):
-        out_fn += ".mp4"
 
     # Verify Intro/Outro exist before starting
     intro = os.path.join(SCRIPT_DIR, "Intro Pronectis.mp4")
@@ -230,9 +258,11 @@ async def run_pipeline(req: RunRequest):
 
     ok = runner.start(
         url=req.url,
-        out_filename=out_fn,
+        project_name=req.project_name,
         trim_start=req.trim_start,
         trim_end=req.trim_end,
+        video_format=req.video_format,
+        extra_context=req.extra_context,
         auto_upload=req.auto_upload,
         outputs_dir=OUTPUTS_DIR,
     )
@@ -252,25 +282,31 @@ async def prompt_response(req: PromptResponseModel):
     return {"ok": True}
 
 
-# ── Outputs ───────────────────────────────────────────────────────────────────
+# ── History ───────────────────────────────────────────────────────────────────
 
-@app.get("/api/outputs")
-async def list_outputs():
+@app.get("/api/history")
+async def api_history():
+    """Return the last 5 projects sorted by creation time (newest first)."""
+    import json as _json
     os.makedirs(OUTPUTS_DIR, exist_ok=True)
-    result = []
-    for name in os.listdir(OUTPUTS_DIR):
-        if name.startswith("."):
+    projects = []
+    for entry in os.scandir(OUTPUTS_DIR):
+        if not entry.is_dir():
             continue
-        full = os.path.join(OUTPUTS_DIR, name)
-        if os.path.isfile(full) and not name.startswith("temp_"):
-            st = os.stat(full)
-            result.append({
-                "name": name,
-                "size": st.st_size,
-                "modified": datetime.datetime.fromtimestamp(st.st_mtime).isoformat(),
-                "ext": os.path.splitext(name)[1].lower(),
-            })
-    return sorted(result, key=lambda x: x["modified"], reverse=True)
+        meta_path = os.path.join(entry.path, "metadata.json")
+        if not os.path.exists(meta_path):
+            continue
+        try:
+            with open(meta_path, encoding="utf-8") as f:
+                meta = _json.load(f)
+            meta["_mtime"] = entry.stat().st_mtime
+            projects.append(meta)
+        except Exception:
+            pass
+    projects.sort(key=lambda p: p.get("_mtime", 0), reverse=True)
+    for p in projects:
+        p.pop("_mtime", None)
+    return {"projects": projects[:5]}
 
 
 @app.get("/api/outputs/{filename:path}")
@@ -294,6 +330,74 @@ async def get_log():
         return {"content": f.read()}
 
 
+@app.get("/api/playlists")
+async def api_playlists():
+    import automate
+    playlists = automate.get_youtube_playlists()
+    return {"playlists": playlists}
+
+@app.post("/api/regenerate")
+async def api_regenerate(req: RegenerateRequest):
+    import automate
+    try:
+        new_text = automate.regenerate_asset(req.field, req.current_value, req.instructions, req.context)
+        return {"ok": True, "new_value": new_text}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+@app.post("/api/upload-thumbnail")
+async def api_upload_thumbnail(file: UploadFile = File(...)):
+    # Determine target project dir (use latest project if available)
+    project_dir = OUTPUTS_DIR
+    last = runner.last_outputs or {}
+    proj_name = last.get("project_name")
+    if proj_name:
+        candidate = os.path.join(OUTPUTS_DIR, proj_name)
+        if os.path.isdir(candidate):
+            project_dir = candidate
+    out_path = os.path.join(project_dir, "thumbnail.jpg")
+    with open(out_path, "wb") as buffer:
+        buffer.write(await file.read())
+    rel = f"{proj_name}/thumbnail.jpg" if proj_name else "thumbnail.jpg"
+    return {"ok": True, "thumbnail_file": rel}
+
+@app.post("/api/regenerate-thumbnail")
+async def api_regenerate_thumbnail(req: RegenThumbnailRequest):
+    import automate
+    try:
+        # Save inside current project dir
+        last = runner.last_outputs or {}
+        proj_name = last.get("project_name")
+        if proj_name:
+            candidate = os.path.join(OUTPUTS_DIR, proj_name)
+            os.makedirs(candidate, exist_ok=True)
+            out_path = os.path.join(candidate, "thumbnail.jpg")
+        else:
+            out_path = os.path.join(OUTPUTS_DIR, req.output_filename)
+        thumb_path = automate.generate_thumbnail_ai(req.prompt, out_path)
+        if thumb_path:
+            rel = f"{proj_name}/thumbnail.jpg" if proj_name else os.path.basename(thumb_path)
+            return {"ok": True, "thumbnail_file": rel}
+        else:
+            raise HTTPException(500, "La IA no devolvió ninguna imagen.")
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+@app.post("/api/apply-logo")
+async def api_apply_logo(req: ApplyLogoRequest):
+    import automate
+    logo_path = os.path.join(SCRIPT_DIR, "Logo Pronectis Color.png")
+    thumb_path = os.path.join(OUTPUTS_DIR, req.thumbnail_file)
+    if not os.path.exists(thumb_path) or not os.path.exists(logo_path):
+        raise HTTPException(400, "Falta la miniatura o el logo ('Logo Pronectis Color.png').")
+    # Save logo'd thumbnail in same dir as original
+    thumb_dir  = os.path.dirname(thumb_path)
+    out_path   = os.path.join(thumb_dir, "thumbnail_logo.jpg")
+    automate.apply_logo_to_thumbnail(thumb_path, logo_path, out_path)
+    # Build relative path
+    rel = os.path.relpath(out_path, OUTPUTS_DIR).replace("\\", "/")
+    return {"ok": True, "new_thumbnail": rel}
+
 # ── YouTube manual upload ─────────────────────────────────────────────────────
 
 @app.post("/api/upload-youtube")
@@ -301,36 +405,59 @@ async def upload_youtube(req: UploadRequest):
     if runner.status in ("running", "waiting_confirmation"):
         raise HTTPException(409, "El pipeline está en ejecución. Esperá a que termine.")
 
-    if req.privacy_status not in ("private", "unlisted", "public"):
-        raise HTTPException(400, "privacy_status debe ser 'private', 'unlisted' o 'public'.")
-
     video_path = os.path.join(OUTPUTS_DIR, req.video_filename)
     if not os.path.isfile(video_path):
         raise HTTPException(404, f"Video no encontrado: {req.video_filename}")
 
     if not req.title.strip():
         raise HTTPException(400, "El título no puede estar vacío.")
-    if not req.description.strip():
-        raise HTTPException(400, "La descripción no puede estar vacía.")
 
     async def do_upload():
         runner.status = "running"
+        import automate, json as _json
         try:
-            vid_id = runner._step_upload(
-                video_path, req.title.strip(), req.description.strip(), req.privacy_status
+            tags_list = [t.strip() for t in req.tags.split(",") if t.strip()]
+            vid_id = automate.upload_video_to_youtube(
+                video_path, req.title.strip(), req.description.strip(), 
+                category_id=req.category_id, tags=tags_list, privacy_status="private"
             )
             if vid_id:
+                # Upload thumbnail if exists
+                if req.thumbnail_file:
+                    thumb_path = os.path.join(OUTPUTS_DIR, req.thumbnail_file)
+                    if os.path.exists(thumb_path):
+                        automate.set_youtube_thumbnail(vid_id, thumb_path)
+                        
+                # Add to playlist
+                if req.playlist_id:
+                    automate.add_video_to_playlist(vid_id, req.playlist_id)
+
+                # ── Update metadata.json with YouTube URL ──────────────────────
+                last = runner.last_outputs or {}
+                proj_name = last.get("project_name")
+                if proj_name:
+                    meta_path = os.path.join(OUTPUTS_DIR, proj_name, "metadata.json")
+                    if os.path.exists(meta_path):
+                        try:
+                            meta = _json.loads(open(meta_path, encoding="utf-8").read())
+                            meta["youtube_id"]  = vid_id
+                            meta["youtube_url"] = f"https://youtu.be/{vid_id}"
+                            meta["status"]      = "done"
+                            with open(meta_path, "w", encoding="utf-8") as f:
+                                _json.dump(meta, f, ensure_ascii=False, indent=2)
+                        except Exception:
+                            pass
+                    
                 await manager.broadcast({
                     "type": "youtube_done",
                     "video_id": vid_id,
                     "url": f"https://youtu.be/{vid_id}",
-                    "privacy": req.privacy_status,
+                    "privacy": "private",
                 })
             else:
                 await manager.broadcast({
                     "type": "youtube_error",
-                    "error": "La API de YouTube no retornó un ID de video. "
-                             "Revisá el token y los permisos.",
+                    "error": "La API de YouTube no retornó un ID de video.",
                 })
         except Exception as exc:
             await manager.broadcast({"type": "youtube_error", "error": str(exc)})

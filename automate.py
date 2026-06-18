@@ -7,6 +7,10 @@ import argparse
 import re
 import datetime
 import pickle
+import io
+import requests
+import urllib.request
+from PIL import Image
 import yt_dlp
 from google import genai
 from dotenv import load_dotenv
@@ -39,7 +43,7 @@ TRACKED_OUTPUTS = []
 TEMP_FILES = []
 ERROR_LOG = []
 SUCCESS_LOG = []
-SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
+SCOPES = ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube']
 
 def log_error(step_name, detail):
     """Registra un error interno para el informe final."""
@@ -245,9 +249,9 @@ def get_video_context(url):
         return f"Título Original: {title}\n\nTranscripción real del video:\n{transcript_text}"
     return f"Título Original: {title}\n\nDescripción Original:\n{original_desc}"
 
-def generate_marketing_assets(video_context):
-    """Llama a Gemini para redactar la descripción y proponer un único título (JSON)."""
-    print(f"-> Conectando con Gemini para estructurar la descripción y el título...")
+def generate_marketing_assets(video_context, extra_context=""):
+    """Llama a Gemini para redactar la descripción, proponer un título y generar tags (JSON)."""
+    print(f"-> Conectando con Gemini para estructurar la descripción, título y etiquetas...")
     if "GEMINI_API_KEY" not in os.environ:
         raise ValueError("No se encontró la variable GEMINI_API_KEY en el archivo .env")
 
@@ -256,27 +260,115 @@ def generate_marketing_assets(video_context):
     with open(os.path.join(script_dir, "descripcion_ejemplo.txt"), 'r', encoding='utf-8') as f: ejemplo = f.read()
     with open(os.path.join(script_dir, "titulos_ejemplo.txt"), 'r', encoding='utf-8') as f: titulos_referencia = f.read()
     
+    contexto_extra_prompt = f"CONTEXTO EXTRA DEL USUARIO PARA TENER EN CUENTA: {extra_context}\n" if extra_context else ""
+    
     prompt = f"""
-    Eres un experto en SEO para YouTube y redactor de contenidos corporativos de la empresa Pronectis.
-    Genera dos recursos clave basados en este contexto:
+    Eres un experto en SEO para YouTube y redactor corporativo de Pronectis.
+    Procesa de forma unificada la transcripción real, la descripción original y el título original para extraer la esencia del video.
+    
+    {contexto_extra_prompt}
+    
+    Genera 3 recursos clave basados en este contexto:
     1. Una descripción definitiva unificada bajo las reglas corporativas.
-    2. Un (1) único título definitivo optimizado.
+    2. Un título altamente representativo, conciso y optimizado para SEO (ignora clickbait vacío, enfócate en el núcleo del tema, máximo 100 caracteres).
+    3. Una lista de 10 a 15 etiquetas (hashtags) relevantes para SEO separadas por coma.
 
     CONTEXTO DEL VIDEO: {video_context}
     LANDINGS: {landings}
     EJEMPLOS TÍTULOS: {titulos_referencia}
     ESTRUCTURA EJEMPLO: {ejemplo}
 
-    Devuelve OBLIGATORIAMENTE un JSON con las llaves "descripcion" y "titulo" (MAX 100 CARACTERES PARA EL TITULO), sin textos adicionales:
+    Devuelve OBLIGATORIAMENTE un JSON estricto con las llaves "descripcion", "titulo", y "tags", sin textos adicionales:
     {{
         "descripcion": "Texto final...",
-        "titulo": "Título final..."
+        "titulo": "Título final...",
+        "tags": "tag1, tag2, tag3, seo, pronectis"
     }}
     """
     response = client.models.generate_content(
         model='gemini-2.5-flash', contents=prompt, config={"response_mime_type": "application/json"}
     )
     return json.loads(response.text)
+
+def regenerate_asset(field_name, current_value, instructions, full_context):
+    """Regenera un único campo de texto (título, descripción, tags) con instrucciones del usuario."""
+    print(f"-> Regenerando campo '{field_name}' mediante IA interactiva...")
+    prompt = f"""
+    Eres un redactor SEO de YouTube. Te pido que reescribas el siguiente campo: {field_name}.
+    
+    VALOR ACTUAL:
+    {current_value}
+    
+    INSTRUCCIONES DE CORRECCIÓN DEL USUARIO:
+    {instructions}
+    
+    CONTEXTO GENERAL DEL VIDEO (como referencia):
+    {full_context}
+    
+    Devuelve SOLO el texto corregido para '{field_name}', sin formato markdown (como bloques de código), sin explicaciones extra.
+    """
+    response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+    return response.text.strip()
+
+def generate_thumbnail_ai(prompt_text, output_path):
+    """Genera una miniatura usando IA (Pollinations) porque los modelos de Gemini no están habilitados en esta API Key."""
+    import urllib.parse
+    import urllib.request
+    print("-> Intentando generar miniatura con IA (Pollinations)...")
+    
+    if not prompt_text:
+        prompt_text = "Abstract technology background, dark blue tones, clean corporate design, professional, high quality"
+    
+    final_prompt = f"YouTube video thumbnail image. Professional, corporate style, no text overlays. Theme: {prompt_text}. High quality, 16:9 aspect ratio, vibrant colors."
+    
+    try:
+        encoded_prompt = urllib.parse.quote(final_prompt)
+        url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1280&height=720&nologo=true&model=flux"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response:
+            with open(output_path, "wb") as f:
+                f.write(response.read())
+        print(f"-> Miniatura generada con éxito: {output_path}")
+        return output_path
+    except Exception as e:
+        print(f"-> Error usando generador de imágenes ({e}). Podés subir una miniatura manualmente.")
+        return None
+
+def apply_logo_to_thumbnail(thumbnail_path, logo_path, output_path):
+    """Pega el logo de la empresa en la esquina de la miniatura."""
+    try:
+        print("-> Pegando Logo Pronectis en la miniatura...")
+        if not os.path.exists(thumbnail_path) or not os.path.exists(logo_path):
+            return thumbnail_path
+            
+        with Image.open(thumbnail_path) as base_img, Image.open(logo_path) as logo_img:
+            base_img = base_img.convert("RGBA")
+            # Redimensionar base a 1280x720 (estándar YouTube)
+            base_img = base_img.resize((1280, 720), Image.Resampling.LANCZOS)
+            
+            logo_img = logo_img.convert("RGBA")
+            # Queremos que el logo ocupe aprox el 15% del ancho
+            logo_w = int(1280 * 0.15)
+            ratio = logo_w / float(logo_img.size[0])
+            logo_h = int(float(logo_img.size[1]) * float(ratio))
+            logo_img = logo_img.resize((logo_w, logo_h), Image.Resampling.LANCZOS)
+            
+            # Posicionar en la esquina superior derecha con margen
+            margin = 30
+            pos_x = 1280 - logo_w - margin
+            pos_y = margin
+            
+            # Componer pegando el logo usando su propio canal alfa
+            base_img.paste(logo_img, (pos_x, pos_y), logo_img)
+            
+            # Guardar en RGB (JPG)
+            final_img = base_img.convert("RGB")
+            final_img.save(output_path, "JPEG", quality=95)
+            
+        return output_path
+    except Exception as e:
+        print(f"-> Error al pegar el logo: {e}")
+        return thumbnail_path
 
 def concatenate_videos(clips_paths, output_path):
     """Concatena la lista de clips multimedia usando FFmpeg."""
@@ -385,7 +477,61 @@ def get_youtube_service():
 
     return build('youtube', 'v3', credentials=credentials)
 
-def upload_video_to_youtube(video_file, title, description, privacy_status='private'):
+def get_youtube_playlists():
+    """Trae las listas de reproducción del usuario."""
+    print("-> Obteniendo Playlists del usuario...")
+    try:
+        youtube = get_youtube_service()
+        playlists = []
+        request = youtube.playlists().list(part="snippet", mine=True, maxResults=50)
+        while request is not None:
+            response = request.execute()
+            for item in response.get("items", []):
+                playlists.append({
+                    "id": item["id"],
+                    "title": item["snippet"]["title"]
+                })
+            request = youtube.playlists().list_next(request, response)
+        return playlists
+    except Exception as e:
+        print(f"-> Error obteniendo playlists: {e}")
+        return []
+
+def add_video_to_playlist(video_id, playlist_id):
+    """Agrega un video a una lista de reproducción."""
+    print(f"-> Agregando video {video_id} a la playlist {playlist_id}...")
+    try:
+        youtube = get_youtube_service()
+        youtube.playlistItems().insert(
+            part="snippet",
+            body={
+                "snippet": {
+                    "playlistId": playlist_id,
+                    "resourceId": {
+                        "kind": "youtube#video",
+                        "videoId": video_id
+                    }
+                }
+            }
+        ).execute()
+        print("-> Video agregado exitosamente a la playlist.")
+    except Exception as e:
+        print(f"-> Error al agregar a playlist: {e}")
+
+def set_youtube_thumbnail(video_id, thumbnail_path):
+    """Sube una miniatura personalizada a un video."""
+    print(f"-> Subiendo miniatura personalizada para {video_id}...")
+    try:
+        youtube = get_youtube_service()
+        youtube.thumbnails().set(
+            videoId=video_id,
+            media_body=thumbnail_path
+        ).execute()
+        print("-> Miniatura subida con éxito.")
+    except Exception as e:
+        print(f"-> Error al subir la miniatura a YouTube: {e}")
+
+def upload_video_to_youtube(video_file, title, description, category_id="28", tags=None, privacy_status='private'):
     """Sube el entregable final a YouTube de forma resumable por Chunks."""
     print(f"\n[YouTube] Iniciando la transferencia multimedia para: {video_file}")
     try:
@@ -398,8 +544,8 @@ def upload_video_to_youtube(video_file, title, description, privacy_status='priv
         'snippet': {
             'title': title,
             'description': description,
-            'tags': ['Pronectis', 'Google Workspace', 'Automatización', 'SEO'],
-            'categoryId': '28' # Ciencia y Tecnología
+            'tags': tags if tags else ['Pronectis', 'Google Workspace', 'Automatización', 'SEO'],
+            'categoryId': category_id
         },
         'status': {
             'privacyStatus': privacy_status,
