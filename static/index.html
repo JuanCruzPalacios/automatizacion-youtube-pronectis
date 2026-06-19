@@ -69,18 +69,65 @@
       </div>
 
       <div class="form-grid">
-        <div class="form-group">
-          <label for="inputUrl">URL de YouTube <span style="color:var(--red)">*</span></label>
-          <input
-            type="text"
-            id="inputUrl"
-            placeholder="https://www.youtube.com/watch?v=..."
-            autocomplete="off"
-            spellcheck="false"
-          >
-          <span class="input-hint" id="urlHint"></span>
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Origen del Video <span style="color:var(--red)">*</span></label>
+          <div class="tabs-container">
+            <div class="tabs-header">
+              <button class="tab-btn active" onclick="switchVideoSource('youtube')">🔴 YouTube</button>
+              <button class="tab-btn" onclick="switchVideoSource('drive')">☁️ Google Drive</button>
+              <button class="tab-btn" onclick="switchVideoSource('local')">📁 Archivo Local</button>
+            </div>
+            <div class="tabs-content">
+              <!-- Content for YouTube -->
+              <div id="tab-youtube" class="tab-pane active">
+                <input
+                  type="text"
+                  id="inputUrlYt"
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  autocomplete="off"
+                  spellcheck="false"
+                  oninput="validateUrl()"
+                >
+                <span class="input-hint" id="urlYtHint">Pegá un enlace público de YouTube.</span>
+              </div>
+              <!-- Content for Drive -->
+              <div id="tab-drive" class="tab-pane">
+                <input
+                  type="text"
+                  id="inputUrlDrive"
+                  placeholder="https://drive.google.com/..."
+                  autocomplete="off"
+                  spellcheck="false"
+                  oninput="validateUrl()"
+                >
+                <span class="input-hint" id="urlDriveHint">Pegá un enlace público de Google Drive.</span>
+              </div>
+              <!-- Content for Local File -->
+              <div id="tab-local" class="tab-pane">
+                <input 
+                  type="file" 
+                  id="inputFile" 
+                  accept="video/mp4,video/x-m4v,video/*"
+                  class="file-input"
+                  onchange="validateLocalFile()"
+                >
+                <span class="input-hint" id="fileHint">Subí un archivo de video desde tu computadora (máx. recomendado: 2GB).</span>
+                <div id="uploadProgressContainer" style="display: none; margin-top: 10px;">
+                  <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; color: var(--text-2);">
+                    <span>Subiendo archivo...</span>
+                    <span id="uploadProgressText">0%</span>
+                  </div>
+                  <div style="height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;">
+                    <div id="uploadProgressBar" style="height: 100%; width: 0%; background: var(--blue); transition: width 0.2s;"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Hidden input to store active mode -->
+          <input type="hidden" id="videoSourceMode" value="youtube">
         </div>
-        <div class="form-group mt-12">
+        <div class="form-group mt-12" style="grid-column: span 2;">
           <label for="inputProjectName">Nombre del Proyecto <span class="badge" style="background:var(--bg-2); color:var(--text-2); font-weight:normal; padding:2px 6px; font-size:10px;">Opcional</span></label>
           <input
             type="text"
@@ -91,6 +138,7 @@
           >
           <span class="input-hint">Si lo dejás en blanco, se generará uno automático (ej: proyecto_20260618_143000)</span>
         </div>
+      </div>
 
       <div class="form-grid form-grid-2 mt-12">
         <div class="form-group" style="grid-column: span 2;">
@@ -150,8 +198,11 @@
         
         <div class="form-group" style="grid-column: span 2;">
           <label for="inputExtraContext">Contexto Adicional para IA (opcional)</label>
-          <textarea id="inputExtraContext" rows="2" placeholder="Ej: Es un video tutorial sobre..."></textarea>
-          <span class="input-hint">Información extra para que la IA genere mejor el título, la descripción y tags.</span>
+          <textarea id="inputExtraContext" rows="3" placeholder="Ej: Es un video tutorial sobre Python donde explicamos las listas y los diccionarios..." oninput="updateContextCounter()"></textarea>
+          <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+            <span class="input-hint">Información extra para que la IA genere mejor el título, la descripción y tags.</span>
+            <span id="contextCounter" style="font-size: 11px; color: var(--text-2); white-space: nowrap;">0 chars</span>
+          </div>
         </div>
         <div class="form-group">
           <label for="inputTrimStart">✂️ Recortar inicio (segundos)</label>

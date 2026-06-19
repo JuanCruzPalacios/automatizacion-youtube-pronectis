@@ -329,3 +329,88 @@ Proyecto: playita_20260619_103807
 [-] ERRORES:
     [✓] Sin errores.
 --------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-19 11:42:18
+==================================================
+URL: 
+Proyecto: video_corto_20260619_114141
+
+[+] COMPLETADOS:
+  [✓] Archivo local cargado correctamente.
+  [✓] Descripción IA guardada: descripcion.txt
+  [✓] Título IA guardado: titulo.txt
+  [✓] Miniatura generada: thumbnail.jpg
+  [✓] Fusión exitosa: video.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-19 11:45:37
+==================================================
+URL: https://drive.google.com/drive/u/0/home
+Proyecto: short_drive_20260619_114518
+
+[+] COMPLETADOS:
+  [✓] Descarga desde Google Drive completada.
+  [✓] Descripción IA guardada: descripcion.txt
+  [✓] Título IA guardado: titulo.txt
+  [✓] Short copiado directamente: video.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-19 11:49:30
+==================================================
+URL: https://drive.google.com/file/d/1fTccvLgDFQk_qAyStWYjk7uhD_XuB6Uy/view?usp=sharing
+Proyecto: short_drive_20260619_114908
+
+[+] COMPLETADOS:
+  [✓] Descarga desde Google Drive completada.
+  [✓] Descripción IA guardada: descripcion.txt
+  [✓] Título IA guardado: titulo.txt
+  [✓] Short copiado directamente: video.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-19 11:50:41
+==================================================
+URL: https://drive.google.com/file/d/1fTccvLgDFQk_qAyStWYjk7uhD_XuB6Uy/view?usp=sharing
+Proyecto: short_drive_20260619_115017
+
+[+] COMPLETADOS:
+  [✓] Descarga desde Google Drive completada.
+  [✓] Descripción IA guardada: descripcion.txt
+  [✓] Título IA guardado: titulo.txt
+  [✓] Short copiado directamente: video.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-19 11:54:13
+==================================================
+URL: https://drive.google.com/file/d/1fTccvLgDFQk_qAyStWYjk7uhD_XuB6Uy/view?usp=sharing
+Proyecto: proyecto_20260619_115324
+
+[+] COMPLETADOS:
+  [✓] Descarga desde Google Drive completada.
+  [✓] Descripción IA guardada: descripcion.txt
+  [✓] Título IA guardado: titulo.txt
+  [✓] Miniatura generada: thumbnail.jpg
+  [✓] Descarga desde Google Drive completada.
+  [✓] Descripción IA guardada: descripcion.txt
+  [✓] Título IA guardado: titulo.txt
+  [✓] Fusión exitosa: video.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------

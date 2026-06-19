@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 OUTPUTS_DIR = os.path.join(SCRIPT_DIR, "outputs")
+TEMP_DIR    = os.path.join(SCRIPT_DIR, "temp_uploads")
 STATIC_DIR  = os.path.join(SCRIPT_DIR, "static")
 
 sys.path.insert(0, SCRIPT_DIR)
@@ -162,7 +163,8 @@ async def _startup():
 from fastapi import UploadFile, File
 
 class RunRequest(BaseModel):
-    url: str
+    url: str = ""
+    local_file: str = ""
     project_name: str = ""
     trim_start: float = 0.0
     trim_end: float = 0.0
@@ -221,6 +223,30 @@ async def api_status():
         "outputs": runner.last_outputs,
     }
 
+@app.post("/api/upload-video")
+async def api_upload_video(file: UploadFile = File(...)):
+    """Recibe un archivo de video local y lo guarda en la carpeta temporal, devolviendo el nombre."""
+    import uuid
+    # Create temp dir if not exists
+    os.makedirs(TEMP_DIR, exist_ok=True)
+    
+    # Generate a unique filename keeping original extension if possible
+    ext = os.path.splitext(file.filename)[1] if file.filename else ".mp4"
+    if ext.lower() not in [".mp4", ".mov", ".avi", ".mkv", ".m4v"]:
+        ext = ".mp4"
+        
+    unique_name = f"local_upload_{uuid.uuid4().hex[:8]}{ext}"
+    out_path = os.path.join(TEMP_DIR, unique_name)
+    
+    # Write by chunks to avoid RAM overload with big videos
+    with open(out_path, "wb") as buffer:
+        while True:
+            chunk = await file.read(1024 * 1024 * 5) # 5MB chunks
+            if not chunk:
+                break
+            buffer.write(chunk)
+            
+    return {"ok": True, "filename": out_path}
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 
@@ -241,10 +267,21 @@ async def run_pipeline(req: RunRequest):
     if runner.status in ("running", "waiting_confirmation"):
         raise HTTPException(409, "Ya hay un pipeline en ejecución. Esperá a que termine.")
 
-    if not req.url.strip():
-        raise HTTPException(400, "La URL no puede estar vacía.")
-    if "youtube.com" not in req.url and "youtu.be" not in req.url:
-        raise HTTPException(400, "La URL debe ser de YouTube (youtube.com o youtu.be).")
+    if not req.url.strip() and not req.local_file.strip():
+        raise HTTPException(400, "Debe proveer una URL o un archivo local.")
+        
+    if req.url.strip():
+        url = req.url.strip()
+        if "youtube.com" not in url and "youtu.be" not in url and "drive.google.com" not in url:
+            raise HTTPException(400, "La URL debe ser de YouTube o Google Drive.")
+        if "drive.google.com" in url:
+            if "/file/d/" not in url and "id=" not in url:
+                raise HTTPException(400, "La URL de Drive debe ser un enlace directo a un archivo (no a una carpeta).")
+            if len(req.extra_context.strip()) < 50:
+                raise HTTPException(400, "El contexto debe tener al menos 50 caracteres para videos de Drive.")
+            
+    if req.local_file.strip() and len(req.extra_context.strip()) < 50:
+        raise HTTPException(400, "El contexto debe tener al menos 50 caracteres para videos locales.")
 
     # Verify Intro/Outro exist before starting
     intro = os.path.join(SCRIPT_DIR, "Intro Pronectis.mp4")
@@ -258,6 +295,7 @@ async def run_pipeline(req: RunRequest):
 
     ok = runner.start(
         url=req.url,
+        local_file=req.local_file,
         project_name=req.project_name,
         trim_start=req.trim_start,
         trim_end=req.trim_end,

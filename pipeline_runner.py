@@ -106,7 +106,7 @@ class PipelineRunner:
             # Raise exception in main thread if possible, or we let the next step check status.
 
 
-    def start(self, *, url: str, project_name: str, trim_start: float,
+    def start(self, *, url: str, local_file: str = "", project_name: str, trim_start: float,
               trim_end: float, video_format: str, extra_context: str, auto_upload: bool, outputs_dir: str) -> bool:
         """Launch the pipeline in a background daemon thread."""
         if self.status in ("running", "waiting_confirmation"):
@@ -116,7 +116,7 @@ class PipelineRunner:
         self.last_outputs = {}
         self._thread = threading.Thread(
             target=self._thread_main,
-            args=(url, project_name, trim_start, trim_end, video_format, extra_context, auto_upload, outputs_dir),
+            args=(url, local_file, project_name, trim_start, trim_end, video_format, extra_context, auto_upload, outputs_dir),
             daemon=True,
         )
         self._thread.start()
@@ -268,6 +268,43 @@ class PipelineRunner:
 
         self.emit("log", msg="→ Descarga completada exitosamente.")
         return temp_path
+
+    def _step_download_drive(self, url: str, temp_path: str) -> str:
+        import gdown
+        import re
+        self.emit("log", msg=f"[1/5] Descargando video de Google Drive: {url}")
+        
+        # Try to extract the file ID
+        file_id = None
+        match_d = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
+        match_id = re.search(r'id=([a-zA-Z0-9_-]+)', url)
+        if match_d:
+            file_id = match_d.group(1)
+        elif match_id:
+            file_id = match_id.group(1)
+
+        try:
+            if file_id:
+                self.emit("log", msg=f"→ Detectado ID de Drive: {file_id}")
+                output_path = gdown.download(id=file_id, output=temp_path, quiet=False)
+            else:
+                self.emit("log", msg="→ No se pudo extraer ID de Drive, intentando con la URL directa...")
+                output_path = gdown.download(url, temp_path, quiet=False)
+
+            if not output_path or not os.path.exists(output_path):
+                raise FileNotFoundError("No se pudo descargar el archivo de Google Drive.")
+            
+            if os.path.getsize(output_path) < 1024 * 10:  # less than 10KB is likely HTML
+                with open(output_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read(500)
+                if "<html" in content.lower() or "<!doctype html" in content.lower():
+                    raise Exception("Se descargó una página web HTML en lugar del video. Asegurate de que el video sea público (Cualquier persona con el enlace puede ver).")
+                raise Exception("El archivo descargado está corrupto o vacío.")
+                
+            self.emit("log", msg="→ Descarga completada exitosamente.")
+            return output_path
+        except Exception as e:
+            raise Exception(f"Error descargando desde Google Drive: {e}")
 
     def _step_trim(self, input_path: str, output_path: str,
                    start: float, end: float) -> str:
@@ -545,7 +582,7 @@ class PipelineRunner:
         except Exception as e:
             self.emit("log", msg=f"⚠️ No se pudo podar proyectos antiguos: {e}")
 
-    def _thread_main(self, url: str, project_name: str, trim_start: float,
+    def _thread_main(self, url: str, local_file: str, project_name: str, trim_start: float,
                      trim_end: float, video_format: str, extra_context: str, auto_upload: bool, outputs_dir: str):
         # Redirect stdout so all print() calls go to the queue
         old_stdout = sys.stdout
@@ -620,17 +657,41 @@ class PipelineRunner:
                     "en el directorio del proyecto."
                 )
 
-            # ── STEP 1: Download ──────────────────────────────────────────────
+            # ── STEP 1: Download / Usar archivo local ─────────────────────────
             self.current_step = 1
             self.emit("step", step=1, name="Descarga")
             downloaded = None
-            try:
-                downloaded = self._step_download(url, temp_yt)
-                automate.SUCCESS_LOG.append("[✓] Descarga completada.")
-            except PipelineAbortedError:
-                raise
-            except Exception as e:
-                self._ask_to_continue_web("Descarga de Video de YouTube", str(e))
+            is_local_mode = bool(local_file.strip())
+            is_drive_mode = bool(url.strip() and "drive.google.com" in url)
+
+            if is_local_mode:
+                # Already uploaded: just use it directly
+                self.emit("log", msg=f"📂 [1/5] Usando archivo local: {os.path.basename(local_file)}")
+                if os.path.exists(local_file):
+                    downloaded = local_file
+                    automate.TEMP_FILES.append(local_file)  # clean up temp upload after pipeline
+                    automate.SUCCESS_LOG.append("[✓] Archivo local cargado correctamente.")
+                else:
+                    self._ask_to_continue_web("Archivo Local", f"No se encontró el archivo: {local_file}")
+            elif is_drive_mode:
+                # Download from Google Drive using gdown
+                self.emit("log", msg=f"☁️ [1/5] Descargando video desde Google Drive...")
+                try:
+                    downloaded = self._step_download_drive(url, temp_yt)
+                    automate.SUCCESS_LOG.append("[✓] Descarga desde Google Drive completada.")
+                except PipelineAbortedError:
+                    raise
+                except Exception as e:
+                    self._ask_to_continue_web("Descarga de Google Drive", str(e))
+            else:
+                # Normal YouTube download
+                try:
+                    downloaded = self._step_download(url, temp_yt)
+                    automate.SUCCESS_LOG.append("[✓] Descarga completada.")
+                except PipelineAbortedError:
+                    raise
+                except Exception as e:
+                    self._ask_to_continue_web("Descarga de Video de YouTube", str(e))
 
             # ── STEP 1b: Trim ─────────────────────────────────────────────────
             to_merge = downloaded
@@ -649,7 +710,9 @@ class PipelineRunner:
             self.emit("step", step=2, name="Gemini IA")
             titulo_ia, descripcion_ia, tags_ia = "", "", ""
             try:
-                titulo_ia, descripcion_ia, tags_ia = self._step_ai_assets(url, out_desc, out_title_f, extra_context)
+                # For local/Drive sources: pass empty url so AI relies only on context
+                ai_url = "" if (is_local_mode or is_drive_mode) else url
+                titulo_ia, descripcion_ia, tags_ia = self._step_ai_assets(ai_url, out_desc, out_title_f, extra_context)
                 if "short" in video_format and "#shorts" not in tags_ia.lower():
                     tags_ia += ", Shorts"
             except PipelineAbortedError:

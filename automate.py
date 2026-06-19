@@ -215,7 +215,13 @@ def clean_vtt_subtitles(vtt_content):
     return " ".join(cleaned_lines)
 
 def get_video_context(url):
-    """Extrae tanto los metadatos como la transcripción real del video con yt-dlp."""
+    """Extrae tanto los metadatos como la transcripción real del video con yt-dlp.
+    Si url está vacío (modo archivo local o Drive sin transcript), devuelve string vacío
+    para que la IA trabaje exclusivamente con el contexto provisto por el usuario."""
+    if not url or not url.strip():
+        print("[2/5] Modo local/Drive: no hay URL de YouTube. La IA usará el contexto provisto por el usuario.")
+        return ""
+
     print(f"\n[2/5] Extrayendo contexto y transcripción real con yt-dlp...")
     meta_opts = {'quiet': True, 'no_warnings': True}
     with yt_dlp.YoutubeDL(meta_opts) as ydl:
@@ -267,11 +273,23 @@ def generate_marketing_assets(video_context, extra_context=""):
     with open(os.path.join(script_dir, "descripcion_ejemplo.txt"), 'r', encoding='utf-8') as f: ejemplo = f.read()
     with open(os.path.join(script_dir, "titulos_ejemplo.txt"), 'r', encoding='utf-8') as f: titulos_referencia = f.read()
     
-    contexto_extra_prompt = f"CONTEXTO EXTRA DEL USUARIO PARA TENER EN CUENTA: {extra_context}\n" if extra_context else ""
-    
+    contexto_extra_prompt = f"CONTEXTO DEL USUARIO SOBRE EL VIDEO: {extra_context}\n" if extra_context else ""
+
+    if video_context:
+        # Normal mode: has YouTube transcript/metadata
+        fuente_contexto = f"CONTEXTO EXTRAÍDO DEL VIDEO (YouTube):\n{video_context}"
+        instruccion_contexto = "Procesa de forma unificada la transcripción real, la descripción original y el título original para extraer la esencia del video."
+    else:
+        # Local/Drive mode: no YouTube data, rely entirely on user context
+        fuente_contexto = ""
+        instruccion_contexto = (
+            "Este video fue subido directamente (no es de YouTube), por lo que NO tenés transcripción ni metadatos automáticos. "
+            "Basate EXCLUSIVAMENTE en el contexto provisto por el usuario para inferir el tema del video y generar los recursos de marketing."
+        )
+
     prompt = f"""
     Eres un experto en SEO para YouTube y redactor corporativo de Pronectis.
-    Procesa de forma unificada la transcripción real, la descripción original y el título original para extraer la esencia del video.
+    {instruccion_contexto}
     
     {contexto_extra_prompt}
     
@@ -280,7 +298,7 @@ def generate_marketing_assets(video_context, extra_context=""):
     2. Un título altamente representativo, conciso y optimizado para SEO (ignora clickbait vacío, enfócate en el núcleo del tema, máximo 100 caracteres).
     3. Una lista de 10 a 15 etiquetas (hashtags) relevantes para SEO separadas por coma.
 
-    CONTEXTO DEL VIDEO: {video_context}
+    {fuente_contexto}
     LANDINGS: {landings}
     EJEMPLOS TÍTULOS: {titulos_referencia}
     ESTRUCTURA EJEMPLO: {ejemplo}

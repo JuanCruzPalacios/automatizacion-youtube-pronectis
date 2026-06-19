@@ -859,6 +859,72 @@ textarea { resize: vertical; min-height: 100px; line-height: 1.6; }
   width: auto; height: auto;
 }
 
+/* ── Tabs & File Input ────────────────────────────────────────────────────── */
+.tabs-container {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  margin-top: 6px;
+  background: var(--bg-1);
+}
+
+.tabs-header {
+  display: flex;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all var(--t-fast);
+  border-bottom: 2px solid transparent;
+}
+
+.tab-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+
+.tab-btn.active {
+  color: var(--blue);
+  background: var(--bg-1);
+  border-bottom: 2px solid var(--blue);
+}
+
+.tabs-content {
+  padding: 16px;
+}
+
+.tab-pane {
+  display: none;
+}
+
+.tab-pane.active {
+  display: block;
+}
+
+.file-input {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  background: var(--bg-input);
+  border: 1px dashed var(--border-md);
+  border-radius: var(--r-md);
+  color: var(--text-1);
+  font-size: 13px;
+  cursor: pointer;
+}
+.file-input:hover {
+  border-color: var(--blue);
+}
+
 /* ── Tags Flow Layout Fix ─────────────────────────────────────────────────── */
 #tagsChipList {
   display: contents;

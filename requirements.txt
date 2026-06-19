@@ -21,4 +21,4 @@ Pillow
 
 # ── Utilities ────────────────────────────────────────────────────────────────
 python-dotenv
-requests
+requestsgdown

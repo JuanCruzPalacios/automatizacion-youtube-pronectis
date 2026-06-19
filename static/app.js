@@ -71,7 +71,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // URL validation on input
   document.getElementById('inputUrl').addEventListener('input', validateUrl);
+
+  // Context counter
+  document.getElementById('inputExtraContext').addEventListener('input', updateContextCounter);
 });
+
+function updateContextCounter() {
+  const len = document.getElementById('inputExtraContext').value.length;
+  const counter = document.getElementById('contextCounter');
+  const mode = document.getElementById('videoSourceMode').value;
+  const urlYtVal = document.getElementById('inputUrlYt')?.value || '';
+  const urlDriveVal = document.getElementById('inputUrlDrive')?.value || '';
+  const urlVal = mode === 'youtube' ? urlYtVal : (mode === 'drive' ? urlDriveVal : '');
+  const needsMin = (mode === 'local') || (mode === 'drive');
+  
+  if (needsMin) {
+    counter.textContent = `Mínimo: 50 caracteres (Van: ${len})`;
+    counter.style.color = len >= 50 ? 'var(--green)' : 'var(--red)';
+  } else {
+    counter.textContent = `${len} chars`;
+    counter.style.color = len > 0 ? 'var(--text-1)' : 'var(--text-2)';
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WebSocket
@@ -229,7 +250,8 @@ function respondShutdown(action) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function startPipeline() {
-  const url        = document.getElementById('inputUrl').value.trim();
+  const mode       = document.getElementById('videoSourceMode').value; // 'youtube', 'drive', 'local'
+  const fileInput  = document.getElementById('inputFile');
   const projectName= (document.getElementById('inputProjectName').value || '').trim();
   const trimStart  = parseFloat(document.getElementById('inputTrimStart').value) || 0;
   const trimEnd    = parseFloat(document.getElementById('inputTrimEnd').value) || 0;
@@ -237,18 +259,102 @@ async function startPipeline() {
   const extraContext = document.getElementById('inputExtraContext').value.trim();
   const autoUpload = false;
 
+  let localFile = "";
+  let finalUrl = "";
+
   // Validate
-  if (!url) {
-    showFieldError('inputUrl', 'Ingresá la URL del video de YouTube.');
-    return;
-  }
-  if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
-    showFieldError('inputUrl', 'La URL debe ser de YouTube (youtube.com o youtu.be).');
-    return;
+  if (mode === 'youtube') {
+    const url = document.getElementById('inputUrlYt').value.trim();
+    if (!url) {
+      showFieldError('inputUrlYt', 'Ingresá un enlace público de YouTube.');
+      return;
+    }
+    if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
+      showFieldError('inputUrlYt', 'La URL debe ser de YouTube.');
+      return;
+    }
+    finalUrl = url;
+  } else if (mode === 'drive') {
+    const url = document.getElementById('inputUrlDrive').value.trim();
+    if (!url) {
+      showFieldError('inputUrlDrive', 'Ingresá un enlace público de Google Drive.');
+      return;
+    }
+    if (!url.includes('drive.google.com')) {
+      showFieldError('inputUrlDrive', 'La URL debe ser de Google Drive.');
+      return;
+    }
+    if (!url.includes('/file/d/') && !url.includes('id=')) {
+      showFieldError('inputUrlDrive', 'Asegurate de que sea un enlace a un archivo (no a una carpeta).');
+      return;
+    }
+    if (extraContext.length < 50) {
+      showFieldError('inputExtraContext', 'Para videos de Google Drive el contexto es obligatorio (mínimo 50 caracteres).');
+      return;
+    }
+    finalUrl = url;
+  } else {
+    if (fileInput.files.length === 0) {
+      showFieldError('inputFile', 'Seleccioná un archivo de video local.');
+      return;
+    }
+    if (extraContext.length < 50) {
+      showFieldError('inputExtraContext', 'Para videos locales el contexto es obligatorio (mínimo 50 caracteres).');
+      return;
+    }
+
+    // Upload file first
+    const file = fileInput.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    document.getElementById('uploadProgressContainer').style.display = 'block';
+    document.getElementById('uploadProgressBar').style.width = '0%';
+    document.getElementById('uploadProgressText').textContent = '0%';
+
+    try {
+      // Usar XMLHttpRequest para tener progreso real de subida
+      const uploadFilename = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/upload-video', true);
+        
+        xhr.upload.onprogress = function(e) {
+          if (e.lengthComputable) {
+            const percentComplete = Math.round((e.loaded / e.total) * 100);
+            document.getElementById('uploadProgressBar').style.width = percentComplete + '%';
+            document.getElementById('uploadProgressText').textContent = percentComplete + '%';
+          }
+        };
+
+        xhr.onload = function() {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            const res = JSON.parse(xhr.responseText);
+            resolve(res.filename);
+          } else {
+            reject(new Error('Error al subir el archivo: ' + xhr.responseText));
+          }
+        };
+
+        xhr.onerror = function() {
+          reject(new Error('Error de red al intentar subir el archivo.'));
+        };
+
+        xhr.send(formData);
+      });
+      
+      localFile = uploadFilename;
+      document.getElementById('uploadProgressContainer').style.display = 'none';
+
+    } catch (e) {
+      toast('❌ Falló la subida del video: ' + e.message, 'error');
+      document.getElementById('uploadProgressContainer').style.display = 'none';
+      return;
+    }
   }
 
   const body = { 
-    url, 
+    url: finalUrl, 
+    local_file: localFile,
     project_name: projectName,
     trim_start: trimStart, 
     trim_end: trimEnd, 
@@ -273,7 +379,7 @@ async function startPipeline() {
     // Success: update UI to running state
     setPipelineRunning();
     clearConsole();
-    logLine(`→ Pipeline iniciado para: ${url}`, 'info');
+    logLine(`→ Pipeline iniciado para: ${finalUrl || 'Archivo Local'}`, 'info');
     if (trimStart > 0 || trimEnd > 0) {
       logLine(`→ Recorte configurado: -${trimStart}s inicio / -${trimEnd}s fin`, 'dim');
     }
@@ -1382,28 +1488,93 @@ function selectFormat(card) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Video Source Tabs
+// ─────────────────────────────────────────────────────────────────────────────
+
+function switchVideoSource(mode) {
+  document.getElementById('videoSourceMode').value = mode;
+  
+  // Update buttons
+  document.querySelectorAll('.tabs-header .tab-btn').forEach((btn, idx) => {
+    if ((mode === 'youtube' && idx === 0) || (mode === 'drive' && idx === 1) || (mode === 'local' && idx === 2)) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+
+  // Update panes
+  document.getElementById('tab-youtube').classList.toggle('active', mode === 'youtube');
+  document.getElementById('tab-drive').classList.toggle('active', mode === 'drive');
+  document.getElementById('tab-local').classList.toggle('active', mode === 'local');
+
+  // Update Context Label dynamically
+  const contextLabel = document.querySelector('label[for="inputExtraContext"]');
+  if (mode === 'local' || mode === 'drive') {
+    contextLabel.innerHTML = 'Contexto del Video <span style="color:var(--red)">*</span> <span class="badge" style="background:var(--bg-2); color:var(--text-2); font-weight:normal; padding:2px 6px; font-size:10px;">Min. 50 caracteres</span>';
+  } else {
+    contextLabel.innerHTML = 'Contexto Adicional para IA (opcional)';
+  }
+  updateContextCounter();
+}
+
+function validateLocalFile() {
+  const fileInput = document.getElementById('inputFile');
+  const fileHint = document.getElementById('fileHint');
+  if (fileInput.files.length > 0) {
+    const file = fileInput.files[0];
+    const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+    fileHint.textContent = `Archivo seleccionado: ${file.name} (${sizeMB} MB).`;
+    fileHint.style.color = 'var(--green)';
+  } else {
+    fileHint.textContent = 'Subí un archivo de video desde tu computadora (máx. recomendado: 2GB).';
+    fileHint.style.color = '';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Form helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 function validateUrl() {
-  const url   = document.getElementById('inputUrl').value.trim();
-  const hint  = document.getElementById('urlHint');
-  const input = document.getElementById('inputUrl');
-
-  if (!url) {
-    hint.textContent = '';
-    input.style.borderColor = '';
-    return;
+  const mode = document.getElementById('videoSourceMode').value;
+  
+  if (mode === 'youtube') {
+    const url = document.getElementById('inputUrlYt').value.trim();
+    const hint = document.getElementById('urlYtHint');
+    const input = document.getElementById('inputUrlYt');
+    
+    if (!url) {
+      hint.textContent = 'Pegá un enlace público de YouTube.';
+      input.style.borderColor = '';
+    } else if (url.includes('youtube.com') || url.includes('youtu.be')) {
+      hint.textContent = '✓ URL de YouTube válida';
+      hint.style.color = 'var(--green)';
+      input.style.borderColor = 'var(--green)';
+    } else {
+      hint.textContent = '✕ Debe ser una URL de YouTube';
+      hint.style.color = 'var(--red)';
+      input.style.borderColor = 'var(--red)';
+    }
+  } else if (mode === 'drive') {
+    const url = document.getElementById('inputUrlDrive').value.trim();
+    const hint = document.getElementById('urlDriveHint');
+    const input = document.getElementById('inputUrlDrive');
+    
+    if (!url) {
+      hint.textContent = 'Pegá un enlace público de Google Drive.';
+      input.style.borderColor = '';
+    } else if (url.includes('drive.google.com') && (url.includes('/file/d/') || url.includes('id='))) {
+      hint.textContent = '✓ URL de Google Drive válida';
+      hint.style.color = 'var(--green)';
+      input.style.borderColor = 'var(--green)';
+    } else {
+      hint.textContent = '✕ Debe ser una URL de un archivo de Google Drive (no carpeta)';
+      hint.style.color = 'var(--red)';
+      input.style.borderColor = 'var(--red)';
+    }
   }
-  if (url.includes('youtube.com') || url.includes('youtu.be')) {
-    hint.textContent = '✓ URL de YouTube detectada';
-    hint.style.color = 'var(--green)';
-    input.style.borderColor = 'var(--green)';
-  } else {
-    hint.textContent = '✕ Debe ser una URL de YouTube';
-    hint.style.color = 'var(--red)';
-    input.style.borderColor = 'var(--red)';
-  }
+  updateContextCounter();
 }
 
 function showFieldError(fieldId, msg) {
