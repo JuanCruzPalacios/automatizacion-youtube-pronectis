@@ -94,15 +94,59 @@
 
       <div class="form-grid form-grid-2 mt-12">
         <div class="form-group" style="grid-column: span 2;">
-          <label for="selectVideoFormat">Formato del Video</label>
-          <select id="selectVideoFormat">
-            <option value="normal" selected>Normal (Horizontal + Intro/Outro)</option>
-            <option value="short_crop">Short - Recortar al Centro (9:16)</option>
-            <option value="short_pad">Short - Adaptar Entero (Blur, 9:16)</option>
-            <option value="short_direct">Short - Ya es Vertical (Sin cambios)</option>
-          </select>
+          <label>Formato del Video</label>
+          <div class="format-picker" id="formatPicker">
+
+            <div class="format-card selected" data-value="normal" onclick="selectFormat(this)">
+              <div class="format-card-img-wrap">
+                <img src="/static/format_normal.svg" alt="Normal">
+              </div>
+              <div class="format-card-body">
+                <div class="format-card-title">📺 Normal</div>
+                <div class="format-card-desc">Horizontal 16:9 con Intro y Outro corporativos.</div>
+              </div>
+              <div class="format-card-check">✓</div>
+            </div>
+
+            <div class="format-card" data-value="short_crop" onclick="selectFormat(this)">
+              <div class="format-card-img-wrap">
+                <img src="/static/format_short_crop.svg" alt="Short Crop">
+              </div>
+              <div class="format-card-body">
+                <div class="format-card-title">✂️ Short – Recortar</div>
+                <div class="format-card-desc">Recorta el centro del video a formato 9:16 vertical.</div>
+              </div>
+              <div class="format-card-check">✓</div>
+            </div>
+
+            <div class="format-card" data-value="short_pad" onclick="selectFormat(this)">
+              <div class="format-card-img-wrap">
+                <img src="/static/format_short_blur.svg" alt="Short Blur">
+              </div>
+              <div class="format-card-body">
+                <div class="format-card-title">🌫️ Short – Blur</div>
+                <div class="format-card-desc">Adapta el video entero con fondo difuminado en 9:16.</div>
+              </div>
+              <div class="format-card-check">✓</div>
+            </div>
+
+            <div class="format-card" data-value="short_direct" onclick="selectFormat(this)">
+              <div class="format-card-img-wrap">
+                <img src="/static/format_short_direct.svg" alt="Ya vertical">
+              </div>
+              <div class="format-card-body">
+                <div class="format-card-title">📱 Ya es Vertical</div>
+                <div class="format-card-desc">El video ya está en 9:16, no se modifica.</div>
+              </div>
+              <div class="format-card-check">✓</div>
+            </div>
+
+          </div>
+          <!-- Hidden input that holds the actual value for startPipeline() -->
+          <input type="hidden" id="selectVideoFormat" value="normal">
           <span class="input-hint">Los Shorts ignoran la Intro y la Outro corporativas.</span>
         </div>
+
         
         <div class="form-group" style="grid-column: span 2;">
           <label for="inputExtraContext">Contexto Adicional para IA (opcional)</label>
@@ -120,24 +164,12 @@
           <span class="input-hint">Segundos a eliminar del final del video</span>
         </div>
       </div>
-
-      <div class="mt-16">
-        <div class="toggle-wrap" onclick="toggleAutoUpload()" role="button" tabindex="0"
-             onkeydown="if(event.key==='Enter'||event.key===' ')toggleAutoUpload()">
-          <div class="toggle-label">
-            <strong>🚀 Subida automática a YouTube</strong>
-            <span id="autoUploadDesc">Desactivado — podrás revisar y editar antes de subir</span>
-          </div>
-          <label class="toggle" onclick="event.stopPropagation()">
-            <input type="checkbox" id="toggleAutoUpload" onchange="onAutoUploadChange()">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-      </div>
-
       <button class="btn btn-primary btn-full mt-16" id="btnRun" onclick="startPipeline()">
         <span id="btnRunIcon">▶</span>
         <span id="btnRunLabel">Iniciar Pipeline</span>
+      </button>
+      <button class="btn btn-danger btn-full mt-8" onclick="cancelPipeline()" id="btnCancelPipeline" style="display:none">
+        🛑 Cancelar Pipeline
       </button>
     </div>
 
@@ -221,16 +253,15 @@
     </div>
 
     <!-- Console -->
-    <div class="card mt-12">
-      <div class="card-header">
+    <details class="card mt-12" id="consoleCard">
+      <summary class="card-header" style="list-style: none; outline: none; display: flex; align-items: center; cursor: pointer; user-select: none;">
         <span class="card-icon">💻</span>
-        <span class="card-title">Consola de Logs</span>
-        <div class="flex gap-8 ml-auto align-center">
-          <button class="btn btn-ghost btn-sm" onclick="cancelPipeline()" id="btnCancelPipeline">🛑 Cancelar Pipeline</button>
+        <span class="card-title" style="flex: 1; margin-left: 8px;">Consola de Logs (Click para expandir)</span>
+        <div class="flex gap-8 ml-auto align-center" onclick="event.stopPropagation();">
           <button class="console-clear" onclick="clearConsole()">Limpiar</button>
         </div>
-      </div>
-      <div class="console-wrap">
+      </summary>
+      <div class="console-wrap" style="cursor: default;">
         <div class="console-header">
           <div class="console-dots">
             <div class="console-dot"></div>
@@ -246,7 +277,7 @@
           </div>
         </div>
       </div>
-    </div>
+    </details>
 
   </section>
 

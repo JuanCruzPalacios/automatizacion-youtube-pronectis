@@ -376,7 +376,9 @@ async def api_regenerate_thumbnail(req: RegenThumbnailRequest):
             out_path = os.path.join(OUTPUTS_DIR, req.output_filename)
         thumb_path = automate.generate_thumbnail_ai(req.prompt, out_path)
         if thumb_path:
-            rel = f"{proj_name}/thumbnail.jpg" if proj_name else os.path.basename(thumb_path)
+            # Si generamos en el directorio del proyecto, la ruta es esa.
+            # Sino, la ruta relativa es exactamente req.output_filename
+            rel = f"{proj_name}/thumbnail.jpg" if proj_name else req.output_filename
             return {"ok": True, "thumbnail_file": rel}
         else:
             raise HTTPException(500, "La IA no devolvió ninguna imagen.")

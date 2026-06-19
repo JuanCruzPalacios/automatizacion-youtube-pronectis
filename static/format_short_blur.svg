@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160" width="240" height="160">
+  <rect width="240" height="160" fill="#0f1117"/>
+  <!-- Tall 9:16 frame -->
+  <rect x="82" y="12" width="76" height="132" rx="6" fill="#1e2535" stroke="#7c3aed" stroke-width="2"/>
+  <!-- Blurred side zones (top and bottom letterbox) -->
+  <rect x="84" y="14" width="72" height="30" rx="4" fill="#312e81" opacity="0.85"/>
+  <rect x="84" y="112" width="72" height="30" rx="4" fill="#312e81" opacity="0.85"/>
+  <!-- Blur lines top -->
+  <line x1="90" y1="23" x2="148" y2="23" stroke="#4338ca" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="90" y1="29" x2="148" y2="29" stroke="#4338ca" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+  <line x1="90" y1="35" x2="148" y2="35" stroke="#4338ca" stroke-width="1.5" stroke-linecap="round" opacity="0.2"/>
+  <!-- Blur lines bottom -->
+  <line x1="90" y1="121" x2="148" y2="121" stroke="#4338ca" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="90" y1="127" x2="148" y2="127" stroke="#4338ca" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+  <line x1="90" y1="133" x2="148" y2="133" stroke="#4338ca" stroke-width="1.5" stroke-linecap="round" opacity="0.2"/>
+  <!-- Center video content -->
+  <rect x="84" y="46" width="72" height="64" fill="#1e2535" stroke="#6d28d9" stroke-width="1"/>
+  <polygon points="109,70 109,90 129,80" fill="#7c3aed"/>
+  <!-- Labels -->
+  <text x="120" y="152" font-family="system-ui,sans-serif" font-size="9" fill="#a78bfa" text-anchor="middle">Fondo difuminado</text>
+</svg>

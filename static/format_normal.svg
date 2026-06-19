@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160" width="240" height="160">
+  <rect width="240" height="160" fill="#0f1117"/>
+  <!-- Main video frame -->
+  <rect x="10" y="30" width="220" height="100" rx="6" fill="#1e2535" stroke="#2563eb" stroke-width="1.5"/>
+  <!-- INTRO bar -->
+  <rect x="10" y="30" width="220" height="22" rx="6" fill="#1e3a8a"/>
+  <rect x="10" y="44" width="220" height="8" fill="#1e3a8a"/>
+  <text x="120" y="45" font-family="system-ui,sans-serif" font-size="11" fill="#93c5fd" text-anchor="middle" font-weight="600">INTRO</text>
+  <!-- OUTRO bar -->
+  <rect x="10" y="108" width="220" height="22" rx="6" fill="#1e3a8a"/>
+  <rect x="10" y="108" width="220" height="8" fill="#1e3a8a"/>
+  <text x="120" y="123" font-family="system-ui,sans-serif" font-size="11" fill="#93c5fd" text-anchor="middle" font-weight="600">OUTRO</text>
+  <!-- Play icon -->
+  <polygon points="108,62 108,98 140,80" fill="#3b82f6" opacity="0.9"/>
+  <!-- Label -->
+  <text x="120" y="148" font-family="system-ui,sans-serif" font-size="10" fill="#64748b" text-anchor="middle">16:9 Horizontal</text>
+</svg>

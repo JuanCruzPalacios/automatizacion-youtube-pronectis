@@ -1,12 +1,24 @@
+# ── Web server ────────────────────────────────────────────────────────────────
 fastapi
-uvicorn
+uvicorn[standard]
 pydantic
+python-multipart
+
+# ── YouTube download ───────────────────────────────────────────────────────────
 yt-dlp
-google-genai
-python-dotenv
+
+# ── FFmpeg (bundled, no system install required) ───────────────────────────────
 static-ffmpeg
+
+# ── Google / Gemini AI ────────────────────────────────────────────────────────
+google-genai
 google-api-python-client
 google-auth-oauthlib
 google-auth-httplib2
+
+# ── Image processing ─────────────────────────────────────────────────────────
 Pillow
-python-multipart
+
+# ── Utilities ────────────────────────────────────────────────────────────────
+python-dotenv
+requests

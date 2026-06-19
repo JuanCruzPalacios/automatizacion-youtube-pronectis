@@ -38,6 +38,13 @@ except Exception as e:
 # Inicializar FFmpeg en el entorno usando la función correcta
 ffmpeg_path, ffprobe_path = run.get_or_fetch_platform_executables_else_raise()
 
+# Inyectar el directorio de los binarios de FFmpeg al PATH del proceso.
+# Esto es necesario para que yt-dlp y los comandos subprocess("ffmpeg", ...)
+# encuentren el ejecutable sin necesitar una instalación en el sistema.
+_ffmpeg_dir = os.path.dirname(ffmpeg_path)
+if _ffmpeg_dir not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = _ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
+
 # Variables globales para control de fallos y limpieza dinámica
 TRACKED_OUTPUTS = []
 TEMP_FILES = []
@@ -311,28 +318,58 @@ def regenerate_asset(field_name, current_value, instructions, full_context):
     return response.text.strip()
 
 def generate_thumbnail_ai(prompt_text, output_path):
-    """Genera una miniatura usando IA (Pollinations) porque los modelos de Gemini no están habilitados en esta API Key."""
-    import urllib.parse
-    import urllib.request
-    print("-> Intentando generar miniatura con IA (Pollinations)...")
+    """Genera una miniatura usando Imagen 3 de Google a través de la API de Gemini."""
+    from google import genai
+    from PIL import Image
+    import io
+    
+    print("-> Intentando generar miniatura con IA (Google Imagen 3)...")
     
     if not prompt_text:
         prompt_text = "Abstract technology background, dark blue tones, clean corporate design, professional, high quality"
     
-    final_prompt = f"YouTube video thumbnail image. Professional, corporate style, no text overlays. Theme: {prompt_text}. High quality, 16:9 aspect ratio, vibrant colors."
+    final_prompt = f"YouTube video thumbnail image. Professional, corporate style, no text overlays. Theme: {prompt_text}. High quality, vibrant colors."
     
     try:
-        encoded_prompt = urllib.parse.quote(final_prompt)
-        url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1280&height=720&nologo=true&model=flux"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req) as response:
-            with open(output_path, "wb") as f:
-                f.write(response.read())
-        print(f"-> Miniatura generada con éxito: {output_path}")
-        return output_path
+        client = genai.Client()
+        result = client.models.generate_images(
+            model='imagen-3.0-generate-001',
+            prompt=final_prompt,
+            config=dict(
+                number_of_images=1,
+                output_mime_type="image/jpeg",
+                aspect_ratio="16:9"
+            )
+        )
+        
+        # Guardar la primera imagen generada
+        for generated_image in result.generated_images:
+            image = Image.open(io.BytesIO(generated_image.image.image_bytes))
+            # Convertir a RGB por si acaso y guardar (asegurarse de que sea JPEG/PNG según output_path)
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            image.save(output_path)
+            print(f"-> Miniatura generada con éxito con Imagen 3: {output_path}")
+            return output_path
+            
     except Exception as e:
-        print(f"-> Error usando generador de imágenes ({e}). Podés subir una miniatura manualmente.")
-        return None
+        print(f"[-] Error usando Google Imagen 3 ({e}). Intentando fallback a Pollinations...")
+        # Fallback por si la API Key no tiene permisos para Imagen 3
+        try:
+            import urllib.parse
+            import urllib.request
+            encoded_prompt = urllib.parse.quote(final_prompt)
+            url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1280&height=720&nologo=true&model=flux"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as response:
+                with open(output_path, "wb") as f:
+                    f.write(response.read())
+            print(f"-> Miniatura generada con éxito (Fallback): {output_path}")
+            return output_path
+        except Exception as e_fallback:
+            print(f"[-] Error en el fallback ({e_fallback}). Podés subir una miniatura manualmente.")
+            return None
+
 
 def apply_logo_to_thumbnail(thumbnail_path, logo_path, output_path):
     """Pega el logo de la empresa en la esquina de la miniatura."""

@@ -235,7 +235,7 @@ async function startPipeline() {
   const trimEnd    = parseFloat(document.getElementById('inputTrimEnd').value) || 0;
   const videoFormat= document.getElementById('selectVideoFormat').value;
   const extraContext = document.getElementById('inputExtraContext').value.trim();
-  const autoUpload = document.getElementById('toggleAutoUpload').checked;
+  const autoUpload = false;
 
   // Validate
   if (!url) {
@@ -299,6 +299,14 @@ function setPipelineRunning() {
   resetSteps();
   hidePipelineBadge();
   hideAllProgressBars();
+
+  // Show cancel button
+  const cancelBtn = document.getElementById('btnCancelPipeline');
+  if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+
+  // Open console card
+  const consoleCard = document.getElementById('consoleCard');
+  if (consoleCard) consoleCard.open = true;
 }
 
 function setPipelineIdle() {
@@ -310,6 +318,10 @@ function setPipelineIdle() {
   btn.classList.remove('running');
   icon.textContent = '▶';
   lbl.textContent = 'Iniciar Pipeline';
+
+  // Hide cancel button
+  const cancelBtn = document.getElementById('btnCancelPipeline');
+  if (cancelBtn) cancelBtn.style.display = 'none';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1353,23 +1365,20 @@ function hidePipelineBadge() {
   document.getElementById('pipelineStatusBadge').style.display = 'none';
 }
 
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Toggle auto-upload
+// Format Picker
 // ─────────────────────────────────────────────────────────────────────────────
 
-function toggleAutoUpload() {
-  const chk = document.getElementById('toggleAutoUpload');
-  chk.checked = !chk.checked;
-  onAutoUploadChange();
-}
-
-function onAutoUploadChange() {
-  const checked = document.getElementById('toggleAutoUpload').checked;
-  state.autoUpload = checked;
-  const desc = document.getElementById('autoUploadDesc');
-  desc.textContent = checked
-    ? 'Activado — se subirá automáticamente a YouTube al finalizar (privado)'
-    : 'Desactivado — podrás revisar y editar antes de subir';
+function selectFormat(card) {
+  // Remove selected from all cards
+  document.querySelectorAll('#formatPicker .format-card').forEach(c => {
+    c.classList.remove('selected');
+  });
+  // Select clicked card
+  card.classList.add('selected');
+  // Update hidden input so startPipeline() reads the right value
+  document.getElementById('selectVideoFormat').value = card.dataset.value;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
