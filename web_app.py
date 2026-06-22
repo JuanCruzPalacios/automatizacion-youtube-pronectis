@@ -144,8 +144,8 @@ async def _inactivity_monitor():
             if os.name == 'nt':
                 subprocess.run(["shutdown", "/s", "/t", "5"])
             else:
-                # Intenta apagar linux sin sudo si es root, o usando systemctl
-                os.system("shutdown -h now || systemctl poweroff || sudo shutdown -h now")
+                # Intenta apagar linux usando la ruta absoluta que autorizamos en visudo
+                os.system("sudo /sbin/shutdown -h now")
             break # Salimos del loop porque se está apagando
 
 @app.on_event("startup")
@@ -544,7 +544,7 @@ async def shutdown_vm():
         if platform.system() == "Windows":
             subprocess.Popen(["shutdown", "/s", "/t", "1"])
         else:
-            subprocess.Popen(["sudo", "shutdown", "-h", "now"])
+            subprocess.Popen(["sudo", "/sbin/shutdown", "-h", "now"])
         return {"ok": True, "message": "Apagando la VM..."}
     except Exception as e:
         raise HTTPException(500, f"Error al apagar: {str(e)}")
@@ -576,7 +576,7 @@ async def ws_endpoint(ws: WebSocket):
                 if os.name == 'nt':
                     subprocess.run(["shutdown", "/s", "/t", "5"])
                 else:
-                    subprocess.run(["sudo", "shutdown", "-h", "now"])
+                    subprocess.run(["sudo", "/sbin/shutdown", "-h", "now"])
                 continue
                 
             LAST_ACTIVITY_TIMESTAMP = time.time()
