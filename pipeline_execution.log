@@ -414,3 +414,20 @@ Proyecto: proyecto_20260619_115324
 [-] ERRORES:
     [✓] Sin errores.
 --------------------------------------------------
+
+==================================================
+ EJECUCIÓN - 2026-06-22 11:54:58
+==================================================
+URL: https://www.youtube.com/watch?v=bo9Z_pgByQY
+Proyecto: proyecto_20260622_115354
+
+[+] COMPLETADOS:
+  [✓] Descarga completada.
+  [✓] Descripción IA guardada: descripcion.txt
+  [✓] Título IA guardado: titulo.txt
+  [✓] Miniatura generada: thumbnail.jpg
+  [✓] Fusión exitosa: video.mp4
+
+[-] ERRORES:
+    [✓] Sin errores.
+--------------------------------------------------

@@ -336,43 +336,49 @@ def regenerate_asset(field_name, current_value, instructions, full_context):
     return response.text.strip()
 
 def generate_thumbnail_ai(prompt_text, output_path):
-    """Genera una miniatura usando Imagen 3 de Google a través de la API de Gemini."""
+    """Genera una miniatura usando IA a través de la API de Gemini 3.1 Flash."""
     from google import genai
     from PIL import Image
     import io
     
-    print("-> Intentando generar miniatura con IA (Google Imagen 3)...")
+    print("-> Intentando generar miniatura con IA (Gemini 3.1 Flash)...")
     
     if not prompt_text:
         prompt_text = "Abstract technology background, dark blue tones, clean corporate design, professional, high quality"
     
-    final_prompt = f"YouTube video thumbnail image. Professional, corporate style, no text overlays. Theme: {prompt_text}. High quality, vibrant colors."
+    final_prompt = f"YouTube video thumbnail image. Professional, corporate style. You can include relevant logos or text if appropriate for the topic, but DO NOT include the word 'Pronectis' and DO NOT try to draw the Pronectis logo. Theme: {prompt_text}. High quality, vibrant colors."
     
     try:
+        from google.genai import types
         client = genai.Client()
-        result = client.models.generate_images(
-            model='imagen-3.0-generate-001',
-            prompt=final_prompt,
-            config=dict(
-                number_of_images=1,
-                output_mime_type="image/jpeg",
-                aspect_ratio="16:9"
-            )
+        
+        config = types.GenerateContentConfig(
+            temperature=1,
+            top_p=0.95,
+            response_modalities=["IMAGE"]
         )
         
-        # Guardar la primera imagen generada
-        for generated_image in result.generated_images:
-            image = Image.open(io.BytesIO(generated_image.image.image_bytes))
-            # Convertir a RGB por si acaso y guardar (asegurarse de que sea JPEG/PNG según output_path)
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            image.save(output_path)
-            print(f"-> Miniatura generada con éxito con Imagen 3: {output_path}")
-            return output_path
+        result = client.models.generate_content(
+            model='gemini-3.1-flash-image',
+            contents=final_prompt,
+            config=config
+        )
+        
+        # Extraer la imagen de la respuesta (viene en un inline_data)
+        for part in result.candidates[0].content.parts:
+            if part.inline_data:
+                image = Image.open(io.BytesIO(part.inline_data.data))
+                if image.mode != 'RGB':
+                    image = image.convert('RGB')
+                image.save(output_path, "JPEG")
+                print(f"-> Miniatura generada con éxito con Gemini 2.5 Flash: {output_path}")
+                return output_path
+        
+        raise ValueError("El modelo no devolvió ninguna imagen en la respuesta.")
             
     except Exception as e:
-        print(f"[-] Error usando Google Imagen 3 ({e}). Intentando fallback a Pollinations...")
-        # Fallback por si la API Key no tiene permisos para Imagen 3
+        print(f"[-] Error usando Gemini 3.1 Flash para miniatura ({e}). Intentando fallback a Pollinations...")
+        # Fallback por si la API Key no tiene permisos o falla
         try:
             import urllib.parse
             import urllib.request

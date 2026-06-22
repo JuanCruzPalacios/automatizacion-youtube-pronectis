@@ -356,7 +356,7 @@ class PipelineRunner:
         return title, desc, tags
 
     def _step_thumbnail(self, prompt_text: str, output_path: str) -> Optional[str]:
-        self.emit("log", msg="[AI] Generando miniatura con Google Imagen 3...")
+        self.emit("log", msg="[AI] Generando miniatura con Gemini 3.1 Flash...")
         thumb_path = automate.generate_thumbnail_ai(prompt_text, output_path)
         if thumb_path:
             automate.SUCCESS_LOG.append(f"[✓] Miniatura generada: {os.path.basename(thumb_path)}")
