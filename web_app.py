@@ -49,8 +49,11 @@ app.add_middleware(
 # EL PARCHE CORRECTO: Reescribe la ruta para HTTP y WebSockets sin romper nada
 @app.middleware("http")
 async def limpiar_ruta_app(request, call_next):
-    global LAST_ACTIVITY_TIMESTAMP
-    LAST_ACTIVITY_TIMESTAMP = time.time()
+    # Ignorar pings del balanceador de cargas (Health Checks) para el auto-apagado
+    user_agent = request.headers.get("user-agent", "")
+    if "GoogleHC" not in user_agent:
+        global LAST_ACTIVITY_TIMESTAMP
+        LAST_ACTIVITY_TIMESTAMP = time.time()
     
     # Si por alguna razón entra acá algo de static, lo dejamos pasar
     if "/static" in request.scope["path"]:
