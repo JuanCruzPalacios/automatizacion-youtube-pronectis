@@ -536,6 +536,20 @@ async def save_settings(req: SettingsSave):
     return {"ok": True, "message": f"'{req.key}' guardado correctamente."}
 
 
+@app.post("/api/shutdown")
+async def shutdown_vm():
+    """Apaga la máquina virtual completamente."""
+    import platform, subprocess
+    try:
+        if platform.system() == "Windows":
+            subprocess.Popen(["shutdown", "/s", "/t", "1"])
+        else:
+            subprocess.Popen(["sudo", "shutdown", "-h", "now"])
+        return {"ok": True, "message": "Apagando la VM..."}
+    except Exception as e:
+        raise HTTPException(500, f"Error al apagar: {str(e)}")
+
+
 # ── WebSocket ─────────────────────────────────────────────────────────────────
 
 @app.websocket("/app/ws")

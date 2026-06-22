@@ -1630,3 +1630,19 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
+async function shutdownVM() {
+  if (confirm("¿Estás seguro de que querés APAGAR el servidor virtual? Esto detendrá la aplicación por completo.")) {
+    try {
+      const res = await fetch('/api/shutdown', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        toast('Apagando servidor...', 'success');
+      } else {
+        toast('Error: ' + data.error, 'error');
+      }
+    } catch (e) {
+      toast('Error de red al intentar apagar.', 'error');
+    }
+  }
+}
