@@ -649,32 +649,51 @@
   <!-- ─────────────────────── PANEL: HELP ────────────────────────────── -->
   <section class="panel" id="panelHelp" aria-label="Panel de Ayuda">
     <div class="section-title">❓ Centro de Ayuda e Instrucciones</div>
-    <p class="section-subtitle">Aprende a utilizar la herramienta para maximizar su potencial.</p>
+    <p class="section-subtitle">Bienvenido a la plataforma de Automatización de YouTube de Pronectis. Aprendé a utilizar la herramienta paso a paso.</p>
 
     <div class="card">
-      <h3>🚀 Cómo usar el Pipeline</h3>
-      <ul style="line-height:1.6; margin-left:20px;">
-        <li><strong>URL:</strong> Pega el enlace de YouTube del video original.</li>
-        <li><strong>Formato:</strong> Elige <i>Normal</i> para procesar un video largo añadiéndole Intro y Outro. Elige <i>Shorts</i> si el video es vertical (las intros se ignoran). Hay opciones para recortar al centro o rellenar con blur.</li>
-        <li><strong>Contexto Extra:</strong> Dale directivas a la IA sobre qué trata el video para que el título y descripción sean ultra precisos.</li>
-        <li><strong>Subida Automática:</strong> Déjalo desactivado si quieres revisar o modificar la miniatura, las descripciones y las listas de reproducción antes de que sea enviado a YouTube.</li>
+      <h3>🎯 ¿Qué hace esta plataforma?</h3>
+      <p style="color:var(--text-2); font-size:14px; line-height:1.6; margin-bottom:16px;">
+        Esta herramienta está diseñada para descargarse videos crudos o tutoriales desde YouTube (o Google Drive), procesarlos, agregarles automáticamente la Intro y Outro oficiales de la empresa (si corresponde), y generar con Inteligencia Artificial un título atractivo, una descripción optimizada para SEO y etiquetas relevantes. Finalmente, te permite revisarlo todo y publicarlo directamente en el canal de YouTube con un solo clic.
+      </p>
+
+      <hr style="margin:24px 0; border:0; border-top:1px solid var(--border);">
+
+      <h3>🚀 Paso 1: Iniciar un Proyecto (Pestaña "Inicio")</h3>
+      <ul style="line-height:1.7; margin-left:20px; font-size:14px; color:var(--text-1);">
+        <li><strong>URL del Video:</strong> Pegá acá el enlace de YouTube o Drive del video crudo que grabaste.</li>
+        <li><strong>Nombre del Proyecto (Opcional):</strong> Podés ponerle un nombre a la carpeta para encontrarlo más fácil en el historial (ej: <i>"tutorial_ventas"</i>). Si lo dejás en blanco, se genera uno automático con la fecha.</li>
+        <li><strong>Formato:</strong> Elegí <i>🎬 Normal</i> para videos horizontales largos (se les agregará intro y outro). Elegí <i>📱 Short</i> si es un video vertical para YouTube Shorts (la intro se omite).</li>
+        <li><strong>Contexto Extra para la IA (Súper importante):</strong> Contale a la IA de qué trata el video. Por ejemplo: <i>"Es un tutorial sobre cómo usar Google Calendar enfocado en productividad para equipos de ventas"</i>. Esto hará que el título y la descripción sean 100 veces mejores.</li>
+        <li><strong>Subida Automática:</strong> Te recomendamos <b>dejar esto desactivado</b>. Así podrás revisar el resultado final antes de que el video se publique en YouTube.</li>
       </ul>
-      <hr style="margin:20px 0; border:0; border-top:1px solid var(--border);">
+
+      <hr style="margin:24px 0; border:0; border-top:1px solid var(--border);">
       
-      <h3>🖼️ Gestión de Miniaturas</h3>
-      <ul style="line-height:1.6; margin-left:20px;">
-        <li>Gemini 2.0 Flash (o Imagen 3) intentará generar una miniatura basada en el contexto del video.</li>
-        <li>Si la miniatura no te gusta, haz clic en <b>"✨ Generar con IA"</b> y dile cómo quieres que sea (Ej: "Fondo oscuro con neón azul...").</li>
-        <li>Si prefieres subir la tuya propia, usa <b>"📁 Subir Manual"</b>.</li>
-        <li>Aplica el logo corporativo automáticamente con un solo clic pulsando <b>"✨ Agregar Logo"</b>.</li>
-        <li>Si no deseas que se suba ninguna miniatura, simplemente deshabilita el interruptor <b>"Usar Miniatura"</b> (los Shorts la ocultan por defecto).</li>
+      <h3>📋 Paso 2: Revisión y Edición (Pestaña "Revisión")</h3>
+      <p style="color:var(--text-2); font-size:14px; line-height:1.6; margin-bottom:16px;">
+        Una vez que el pipeline termine, pasarás a la pantalla de Revisión. Si no pusiste "Subida Automática", tu video todavía NO está en YouTube. En esta pantalla vas a poder:
+      </p>
+      <ul style="line-height:1.7; margin-left:20px; font-size:14px; color:var(--text-1);">
+        <li><strong>Ver el video final:</strong> Reproducilo para confirmar que la intro y la outro quedaron bien. Podés descargarlo a tu compu si lo necesitás.</li>
+        <li><strong>Editar Textos:</strong> Revisá el Título, Descripción y Etiquetas que generó Gemini. Podés modificar lo que quieras escribiendo directamente sobre ellos.</li>
+        <li><strong>Gestión de Miniaturas 🖼️:</strong> La IA generará una miniatura conceptual. Si no te gusta, podés presionar <b>"✨ Regenerar"</b> y pedirle otra cosa, o podés usar <b>"📁 Subir Manual"</b> para poner una tuya. ¡No olvides presionar <b>"✨ Agregar Logo"</b> para poner la marca de agua corporativa!</li>
+        <li><strong>Listas de Reproducción y Categoría:</strong> Elegí a qué playlist de YouTube querés que vaya el video.</li>
+        <li><strong>Publicar:</strong> Cuando todo esté perfecto, hacé clic en <b>"📤 Subir a YouTube"</b>. Se subirá de forma PRIVADA para que luego lo pongas público desde YouTube Studio.</li>
       </ul>
-      <hr style="margin:20px 0; border:0; border-top:1px solid var(--border);">
-      
-      <h3>🛑 Controles Especiales</h3>
-      <ul style="line-height:1.6; margin-left:20px;">
-        <li><strong>Cancelar Pipeline:</strong> Puedes interrumpir un pipeline en curso desde el botón <b>"🛑 Cancelar Pipeline"</b> ubicado sobre la consola.</li>
+
+      <hr style="margin:24px 0; border:0; border-top:1px solid var(--border);">
+
+      <h3>📁 Historial y Ajustes (Otras pestañas)</h3>
+      <ul style="line-height:1.7; margin-left:20px; font-size:14px; color:var(--text-1);">
+        <li><strong>Historial:</strong> Guarda tus últimos 5 proyectos. Si creaste un video ayer y olvidaste publicarlo, búscalo acá, hacé clic en su tarjeta, y se volverá a cargar en la pantalla de Revisión.</li>
+        <li><strong>Ajustes:</strong> Acá podés editar las "Plantillas" que usa la Inteligencia Artificial. Por ejemplo, podés cambiar los links de redes sociales que van siempre al final de las descripciones, o ponerle ejemplos de títulos que te gusten para que la IA los imite.</li>
+        <li><strong>Ahorro de energía:</strong> Si no tocás nada durante 15 minutos, te va a salir un cartel avisando que el servidor se va a apagar para ahorrar costos. Si querés apagarlo vos mismo al terminar de trabajar, andá a Ajustes, bajá hasta el final, y hacé clic en el botón rojo <b>"Apagar Servidor"</b>.</li>
       </ul>
+
+      <div style="background: var(--surface-2); padding: 16px; border-radius: 8px; margin-top: 24px; border-left: 4px solid var(--primary);">
+        <strong style="color: var(--primary);">💡 Tip Pro:</strong> Si estás procesando un video y te das cuenta que pusiste mal el link o el formato, podés detenerlo de emergencia haciendo clic en <b>"🛑 Cancelar Pipeline"</b> arriba a la derecha de la consola de logs.
+      </div>
     </div>
   </section>
 
