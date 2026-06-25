@@ -371,7 +371,7 @@ def generate_thumbnail_ai(prompt_text, output_path):
                 if image.mode != 'RGB':
                     image = image.convert('RGB')
                 image.save(output_path, "JPEG")
-                print(f"-> Miniatura generada con éxito con Gemini 2.5 Flash: {output_path}")
+                print(f"-> Miniatura generada con éxito con Gemini 3.1 Flash-Image: {output_path}")
                 return output_path
         
         raise ValueError("El modelo no devolvió ninguna imagen en la respuesta.")
