@@ -195,6 +195,10 @@ function handleWsMessage(msg) {
       onYoutubeError(msg.error);
       break;
 
+    case 'auth_required':
+      onAuthRequired(msg.message);
+      break;
+
     case 'token_expired':
       toast('⚠️ ' + msg.msg, 'warn', 10000);
       break;
@@ -995,6 +999,11 @@ async function uploadToYouTube() {
   }
 
   const btn = document.getElementById('btnUploadYT');
+  if (btn.innerHTML.includes('Iniciar Sesión') || btn.innerHTML.includes('Autenticar')) {
+    startYoutubeAuth();
+    return;
+  }
+
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Subiendo...';
 
@@ -1070,15 +1079,51 @@ function showYoutubeSuccess(videoId, url, privacy) {
 }
 
 function onYoutubeError(error) {
+  if (error.includes('Re-autenticación') || error.includes('Fallo de credenciales')) {
+      onAuthRequired(error);
+      return;
+  }
+
   const progressWrap = document.getElementById('manualUploadProgress');
-  progressWrap.classList.remove('visible');
+  if(progressWrap) progressWrap.classList.remove('visible');
 
   const btn = document.getElementById('btnUploadYT');
-  btn.disabled = false;
-  btn.innerHTML = '📤 Reintentar Subida';
+  if(btn) {
+      btn.disabled = false;
+      btn.innerHTML = '📤 Reintentar Subida';
+  }
 
   logLine('❌ Error en subida a YouTube: ' + error, 'error');
   toast('❌ Error en subida: ' + error, 'error', 8000);
+}
+
+function onAuthRequired(msg) {
+  const progressWrap = document.getElementById('manualUploadProgress');
+  if(progressWrap) progressWrap.classList.remove('visible');
+
+  const btn = document.getElementById('btnUploadYT');
+  if(btn) {
+      btn.disabled = false;
+      btn.innerHTML = '🔑 Iniciar Sesión en YouTube';
+  }
+
+  logLine('⚠️ Requiere Autenticación de YouTube: ' + msg, 'warn');
+  toast('⚠️ Se requiere iniciar sesión en YouTube.', 'warn', 8000);
+}
+
+async function startYoutubeAuth() {
+  toast('Generando enlace de autenticación...', 'info');
+  try {
+    const res = await fetch('/api/youtube-auth');
+    const data = await res.json();
+    if (data.ok && data.url) {
+      window.location.href = data.url;
+    } else {
+      toast('Error al generar enlace de login: ' + data.detail, 'error');
+    }
+  } catch(e) {
+    toast('Error de red al iniciar login.', 'error');
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1269,6 +1314,14 @@ async function applyLogoToThumbnail() {
 async function loadPlaylists() {
   try {
     const res = await fetch('/api/playlists');
+    if (res.status === 401) {
+       toast("⚠️ Se requiere conectar YouTube para ver las playlists.", "warn");
+       const btn = document.getElementById('btnUploadYT');
+       if (btn) {
+           btn.innerHTML = '🔑 Iniciar Sesión en YouTube';
+       }
+       return;
+    }
     const data = await res.json();
     if (data.playlists) {
       const select = document.getElementById('playlistSelect');

@@ -16,8 +16,8 @@ import time
 import subprocess
 from typing import List, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -374,8 +374,13 @@ async def get_log():
 @app.get("/api/playlists")
 async def api_playlists():
     import automate
-    playlists = automate.get_youtube_playlists()
-    return {"playlists": playlists}
+    try:
+        playlists = automate.get_youtube_playlists()
+        return {"playlists": playlists}
+    except Exception as e:
+        if "AuthRequiredError" in str(e) or "Re-autenticación" in str(e):
+            raise HTTPException(401, "Autenticación de YouTube requerida.")
+        raise HTTPException(500, str(e))
 
 @app.post("/api/regenerate")
 async def api_regenerate(req: RegenerateRequest):
@@ -509,6 +514,65 @@ async def upload_youtube(req: UploadRequest):
 
     asyncio.create_task(do_upload())
     return {"ok": True, "message": "Subida a YouTube iniciada."}
+
+
+# ── OAuth Web Flow ────────────────────────────────────────────────────────────
+
+# Variables globales para el flujo OAuth
+OAUTH_STATE = {}
+
+@app.get("/api/youtube-auth")
+async def youtube_auth():
+    import automate
+    from google_auth_oauthlib.flow import Flow
+    try:
+        flow = Flow.from_client_secrets_file(
+            'client_secrets.json',
+            scopes=automate.SCOPES,
+            redirect_uri='https://yt-pipeline.pronectis.com/api/oauth2callback'
+        )
+        auth_url, state = flow.authorization_url(prompt='consent', access_type='offline')
+        
+        # Guardar en memoria para cuando Google redirija de vuelta
+        OAUTH_STATE['state'] = state
+        OAUTH_STATE['code_verifier'] = getattr(flow, 'code_verifier', None)
+        
+        return {"ok": True, "url": auth_url}
+    except Exception as e:
+        return {"ok": False, "detail": str(e)}
+
+@app.get("/api/oauth2callback")
+async def oauth2callback(request: Request):
+    import automate
+    import pickle
+    from google_auth_oauthlib.flow import Flow
+    
+    code = request.query_params.get("code")
+    if not code:
+        return {"error": "No code provided. Autenticación fallida."}
+    try:
+        flow = Flow.from_client_secrets_file(
+            'client_secrets.json',
+            scopes=automate.SCOPES,
+            redirect_uri='https://yt-pipeline.pronectis.com/api/oauth2callback'
+        )
+        
+        # Restaurar variables de seguridad PKCE
+        if OAUTH_STATE.get('state'):
+            flow.state = OAUTH_STATE['state']
+        if OAUTH_STATE.get('code_verifier'):
+            flow.code_verifier = OAUTH_STATE['code_verifier']
+            
+        full_url = str(request.url).replace("http://", "https://")
+        flow.fetch_token(authorization_response=full_url)
+        
+        credentials = flow.credentials
+        with open('youtube_token.pickle', 'wb') as token:
+            pickle.dump(credentials, token)
+            
+        return RedirectResponse(url="/app/")
+    except Exception as e:
+        return {"error": f"Ocurrió un error al autorizar: {e}"}
 
 
 # ── Settings ──────────────────────────────────────────────────────────────────

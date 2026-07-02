@@ -52,6 +52,9 @@ ERROR_LOG = []
 SUCCESS_LOG = []
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube']
 
+class AuthRequiredError(Exception):
+    pass
+
 def log_error(step_name, detail):
     """Registra un error interno para el informe final."""
     ERROR_LOG.append(f"[-] ERROR EN PASO [{step_name}]: {detail}")
@@ -523,25 +526,7 @@ def get_youtube_service():
         if not os.path.exists(secrets_path):
             raise FileNotFoundError(f"Falta el archivo indispensable '{secrets_path}' en el directorio.")
         
-        print("\n[OAuth] Abriendo el navegador para validar los accesos con tu cuenta Workspace...")
-        flow = InstalledAppFlow.from_client_secrets_file(secrets_path, SCOPES)
-        
-        # 🚨 CAMBIO CRUCIAL: Forzamos a Google a que nos entregue el Refresh Token definitivo
-        authorization_url, state = flow.authorization_url(
-            access_type='offline',
-            prompt='consent'
-        )
-        
-        # Ejecutamos el servidor local usando los parámetros offline pre-configurados
-        credentials = flow.run_local_server(
-            port=0,
-            access_type='offline',
-            prompt='consent'
-        )
-        
-        with open(token_path, 'wb') as token:
-            pickle.dump(credentials, token)
-            print("-> Token permanente guardado exitosamente para usos automatizados.")
+        raise AuthRequiredError("Re-autenticación de YouTube requerida vía web.")
 
     return build('youtube', 'v3', credentials=credentials)
 
@@ -604,6 +589,8 @@ def upload_video_to_youtube(video_file, title, description, category_id="28", ta
     print(f"\n[YouTube] Iniciando la transferencia multimedia para: {video_file}")
     try:
         youtube = get_youtube_service()
+    except AuthRequiredError as e:
+        raise Exception(f"Fallo de credenciales: {e}")
     except Exception as e:
         print(f"[-] Fallo crítico al invocar las credenciales de YouTube: {e}")
         raise Exception(f"Fallo de credenciales: {e}")
