@@ -505,11 +505,18 @@ def get_youtube_service():
     # 🚨 LOGICA CORREGIDA: Si el token existe pero expiró, lo refrescamos usando el Refresh Token
     if credentials and credentials.expired and credentials.refresh_token:
         from google.auth.transport.requests import Request
+        from google.auth.exceptions import RefreshError
         print("-> [Seguridad] El token de acceso expiró. Renovándolo automáticamente...")
-        credentials.refresh(Request())
-        # Pisamos el archivo con el token actualizado para que dure otra hora más de fondo
-        with open(token_path, 'wb') as token:
-            pickle.dump(credentials, token)
+        try:
+            credentials.refresh(Request())
+            # Pisamos el archivo con el token actualizado para que dure otra hora más de fondo
+            with open(token_path, 'wb') as token:
+                pickle.dump(credentials, token)
+        except RefreshError as e:
+            print(f"-> [Aviso] Falló la renovación del token (Refresh Token revocado o inválido): {e}")
+            credentials = None
+            if os.path.exists(token_path):
+                os.remove(token_path)
 
     # Si de verdad no hay credenciales válidas (o no se pudieron refrescar)
     if not credentials or not credentials.valid:
@@ -599,7 +606,7 @@ def upload_video_to_youtube(video_file, title, description, category_id="28", ta
         youtube = get_youtube_service()
     except Exception as e:
         print(f"[-] Fallo crítico al invocar las credenciales de YouTube: {e}")
-        return False
+        raise Exception(f"Fallo de credenciales: {e}")
 
     body = {
         'snippet': {
@@ -624,13 +631,14 @@ def upload_video_to_youtube(video_file, title, description, category_id="28", ta
             if status:
                 print(f"   -> Progreso de subida corporativa: {int(status.progress() * 100)}%...")
         except Exception as e:
-            print(f"[-] Error intermedio de red en la API de YouTube: {e}")
-            return False
+            print(f"[-] Error en la subida a YouTube: {e}")
+            raise Exception(f"Error de API de YouTube: {e}")
 
-    if "id" in response:
+    if response and "id" in response:
         print(f"-> ¡Video subido a YouTube exitosamente! ID asignado: {response['id']}")
         return response["id"]
-    return False
+    
+    raise Exception("La respuesta de YouTube fue exitosa pero no contenía un ID de video.")
 
 # =========================================================================
 # CUERPO PRINCIPAL DEL PIPELINE
